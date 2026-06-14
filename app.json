@@ -29,6 +29,7 @@
       "package": "com.fadaa.elakhwyn",
       "predictiveBackGestureEnabled": false,
       "newArchEnabled": false,
+      "minSdkVersion": 26,
       "permissions": [
         "android.permission.USE_BIOMETRIC",
         "android.permission.USE_FINGERPRINT",
@@ -61,6 +62,17 @@
         "expo-image-picker",
         {
           "photosPermission": "السماح بالوصول للمعرض لاختيار صور المنتجات"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35,
+            "buildToolsVersion": "35.0.0",
+            "kotlinVersion": "1.9.24"
+          }
         }
       ]
     ],
