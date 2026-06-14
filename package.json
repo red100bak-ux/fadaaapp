@@ -7,7 +7,7 @@
     "expo": "^52.0.0",
     "expo-build-properties": "~0.13.3",
     "expo-camera": "^16.0.18",
-    "expo-dev-client": "^56.0.20",
+    "expo-dev-client": "~5.0.20",
     "expo-file-system": "~18.0.12",
     "expo-image-manipulator": "~13.0.6",
     "expo-image-picker": "^16.0.6",
