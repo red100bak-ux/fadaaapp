@@ -42,6 +42,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "./plugins/withKotlinFix",
       "expo-router",
       "expo-notifications",
       "expo-local-authentication",
