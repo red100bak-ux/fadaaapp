@@ -1,0 +1,58 @@
+{
+  "expo": {
+    "name": "فضاء الأخوين",
+    "slug": "fadaa-elakhwyn",
+    "version": "1.0.0",
+    "scheme": "fadaa",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#5c67f2"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.fadaa.elakhwyn"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#5c67f2",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "package": "com.fadaa.elakhwyn",
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-notifications",
+      "expo-local-authentication",
+      [
+        "react-native-vision-camera",
+        {
+          "cameraPermissionText": "السماح بالوصول للكاميرا لمسح الباركود وتصوير المنتجات",
+          "enableCodeScanner": true
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "السماح بالوصول للكاميرا لمسح الباركود وتصوير المنتجات"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "السماح بالوصول للمعرض لاختيار صور المنتجات"
+        }
+      ]
+    ]
+  }
+}

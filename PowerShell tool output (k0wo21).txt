@@ -1,0 +1,82 @@
+Exit code 1
+› Installing 1 SDK 52.0.0 compatible native module using npm
+> npm install
+npm warn ERESOLVE overriding peer dependency
+npm warn While resolving: @firebase/auth@1.13.2
+npm warn Found: @react-native-async-storage/async-storage@1.24.0
+npm warn node_modules/@react-native-async-storage/async-storage
+npm warn   @react-native-async-storage/async-storage@"^1.23.1" from the root project
+npm warn
+npm warn Could not resolve dependency:
+npm warn peerOptional @react-native-async-storage/async-storage@"^2.2.0 || ^3.0.0" from @firebase/auth@1.13.2
+npm warn node_modules/@firebase/auth
+npm warn   @firebase/auth@"1.13.2" from @firebase/auth-compat@0.6.7
+npm warn   node_modules/@firebase/auth-compat
+npm warn   1 more (firebase)
+npm warn
+npm warn Conflicting peer dependency: @react-native-async-storage/async-storage@3.1.1
+npm warn node_modules/@react-native-async-storage/async-storage
+npm warn   peerOptional @react-native-async-storage/async-storage@"^2.2.0 || ^3.0.0" from @firebase/auth@1.13.2
+npm warn   node_modules/@firebase/auth
+npm warn     @firebase/auth@"1.13.2" from @firebase/auth-compat@0.6.7
+npm warn     node_modules/@firebase/auth-compat
+npm warn     1 more (firebase)
+npm error code ERESOLVE
+npm error ERESOLVE could not resolve
+npm error
+npm error While resolving: react-native-screens@4.25.2
+npm error Found: react-native@0.76.9
+npm error node_modules/react-native
+npm error   react-native@"^0.76.9" from the root project
+npm error   peer react-native@"*" from @expo/metro-runtime@4.0.1
+npm error   node_modules/@expo/metro-runtime
+npm error     peerOptional @expo/metro-runtime@"*" from expo@52.0.49
+npm error     node_modules/expo
+npm error       expo@"^52.0.0" from the root project
+npm error       12 more (expo-asset, expo-camera, expo-constants, ...)
+npm error     @expo/metro-runtime@"4.0.1" from expo-router@4.0.22
+npm error     node_modules/expo-router
+npm error       expo-router@"^4.0.22" from the root project
+npm error   16 more (@react-native-async-storage/async-storage, ...)
+npm error
+npm error Could not resolve dependency:
+npm error peer react-native@">=0.82.0" from react-native-screens@4.25.2
+npm error node_modules/react-native-screens
+npm error   react-native-screens@"^4.4.0" from the root project
+npm error   peer react-native-screens@">= 4.0.0" from @react-navigation/bottom-tabs@7.18.0
+npm error   node_modules/@react-navigation/bottom-tabs
+npm error     @react-navigation/bottom-tabs@"^7.2.0" from expo-router@4.0.22
+npm error     node_modules/expo-router
+npm error       expo-router@"^4.0.22" from the root project
+npm error   2 more (@react-navigation/native-stack, expo-router)
+npm error
+npm error Conflicting peer dependency: react-native@0.86.0
+npm error node_modules/react-native
+npm error   peer react-native@">=0.82.0" from react-native-screens@4.25.2
+npm error   node_modules/react-native-screens
+npm error     react-native-screens@"^4.4.0" from the root project
+npm error     peer react-native-screens@">= 4.0.0" from @react-navigation/bottom-tabs@7.18.0
+npm error     node_modules/@react-navigation/bottom-tabs
+npm error       @react-navigation/bottom-tabs@"^7.2.0" from expo-router@4.0.22
+npm error       node_modules/expo-router
+npm error         expo-router@"^4.0.22" from the root project
+npm error     2 more (@react-navigation/native-stack, expo-router)
+npm error
+npm error Fix the upstream dependency conflict, or retry this command with --force or --legacy-peer-deps to accept an incorrect (and potentially broken) dependency resolution.
+npm error
+npm error
+npm error For a full report see:
+npm error C:\Users\dr\AppData\Local\npm-cache\_logs\2026-06-13T02_32_51_926Z-eresolve-report.txt
+npm error A complete log of this run can be found in: C:\Users\dr\AppData\Local\npm-cache\_logs\2026-06-13T02_32_51_926Z-debug-0.log
+Error: npm install exited with non-zero code: 1
+Error: npm install exited with non-zero code: 1
+    at ChildProcess.completionListener (C:\Users\dr\Desktop\FadaaApp\node_modules\@expo\spawn-async\build\spawnAsync.js:113:23)
+    at Object.onceWrapper (node:events:631:26)
+    at ChildProcess.emit (node:events:509:28)
+    at cp.emit (C:\Users\dr\Desktop\FadaaApp\node_modules\cross-spawn\lib\enoent.js:34:29)
+    at ChildProcess._handle.onexit (node:internal/child_process:295:12)
+    ...
+    at spawnAsync (C:\Users\dr\Desktop\FadaaApp\node_modules\@expo\spawn-async\build\spawnAsync.js:9:23)
+    at NpmPackageManager.runAsync (C:\Users\dr\Desktop\FadaaApp\node_modules\@expo\package-manager\build\node\BasePackageManager.js:41:42)
+    at C:\Users\dr\Desktop\FadaaApp\node_modules\@expo\package-manager\build\node\NpmPackageManager.js:36:20
+    at C:\Users\dr\Desktop\FadaaApp\node_modules\@expo\package-manager\build\utils\spawn.js:14:34
