@@ -4,14 +4,7 @@ import {
   Modal, TextInput, KeyboardAvoidingView, Platform, ScrollView, FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import {
-  Camera,
-  useCameraDevice,
-  useCameraPermission,
-  useObjectOutput,
-  isScannedCode,
-} from 'react-native-vision-camera';
-import type { ScannedObject } from 'react-native-vision-camera';
+import { Camera, useCameraDevice, useCameraPermission, useCodeScanner } from 'react-native-vision-camera';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAppStore } from '../src/store/appStore';
 import { Colors, Radii, Shadow } from '../src/theme/colors';
@@ -26,12 +19,12 @@ export default function ScanScreen() {
   const { app, auth, updateApp } = useAppStore();
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice('back', { physicalDevices: ['wide-angle-camera'] });
-  const objectOutput = useObjectOutput({
-    types: ['qr', 'ean-13', 'ean-8', 'code-128', 'code-39', 'pdf-417', 'upc-e'],
-    onObjectsScanned: (objects: ScannedObject[]) => {
-      if (scanned || objects.length === 0) return;
-      const code = objects.find(isScannedCode);
-      if (code?.value) handleBarcode({ data: code.value });
+  const codeScanner = useCodeScanner({
+    codeTypes: ['qr', 'ean-13', 'ean-8', 'code-128', 'code-39', 'pdf-417', 'upc-e'],
+    onCodeScanned: (codes) => {
+      if (scanned || codes.length === 0) return;
+      const value = codes[0]?.value;
+      if (value) handleBarcode({ data: value });
     },
   });
   const { mode } = useLocalSearchParams<{ mode: string }>();
@@ -239,7 +232,7 @@ export default function ScanScreen() {
             style={StyleSheet.absoluteFill}
             device={device}
             isActive={!scanned}
-            outputs={[objectOutput]}
+            codeScanner={codeScanner}
           />
         )}
 
