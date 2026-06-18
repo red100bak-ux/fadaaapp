@@ -1,21 +1,34 @@
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { router, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAppStore } from '../store/appStore';
+import { useThemeColor } from '../hooks/useThemeColor';
 
-const TABS = [
-  { route: '/(tabs)/admin', label: 'الإدارة', icon: '⚙️' },
+const ALL_TABS = [
+  { route: '/(tabs)',        label: 'المحل',   icon: '🏠' },
   { route: '/(tabs)/credit', label: 'الكريدي', icon: '📒' },
-  { route: '/(tabs)', label: 'المحل', icon: '🏠' },
+  { route: '/(tabs)/admin',  label: 'الإدارة', icon: '⚙️', adminOnly: true },
 ] as const;
 
 export default function BottomNav() {
   const path = usePathname();
   const insets = useSafeAreaInsets();
+  const auth = useAppStore((s) => s.auth);
+  const themeColor = useThemeColor();
+
+  const users = useAppStore((s) => s.app.users);
+  const isStaff = auth?.role === 'staff';
+  const hasAdminAccess = auth?.phone ? !!(users[auth.phone]?.allowedAdminButtons?.length) : false;
+  const tabs = ALL_TABS.filter((t) => {
+    if (!('adminOnly' in t) || !t.adminOnly) return true;
+    if (isStaff) return hasAdminAccess;
+    return true;
+  });
 
   return (
     <View style={[s.wrapper, { paddingBottom: Math.max(insets.bottom, 12) }]}>
       <View style={s.bar}>
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           const active =
             path === tab.route ||
             (tab.route === '/(tabs)' && (path === '/' || path === '/(tabs)/index'));
@@ -27,7 +40,9 @@ export default function BottomNav() {
               activeOpacity={0.7}
             >
               <Text style={s.icon}>{tab.icon}</Text>
-              <Text style={[s.label, active && s.labelActive]}>{tab.label}</Text>
+              <Text style={[s.label, active && { color: themeColor, fontWeight: '900' }]}>
+                {tab.label}
+              </Text>
             </TouchableOpacity>
           );
         })}
@@ -63,5 +78,4 @@ const s = StyleSheet.create({
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 3 },
   icon: { fontSize: 22 },
   label: { fontSize: 13, fontWeight: '700', color: '#64748b' },
-  labelActive: { color: '#5c67f2' },
 });

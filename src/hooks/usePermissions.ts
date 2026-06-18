@@ -2,7 +2,16 @@ import { useAppStore } from '../store/appStore';
 
 export function usePermissions() {
   const auth = useAppStore((s) => s.auth);
+  const users = useAppStore((s) => s.app.users);
   const role = auth?.role ?? 'view';
+
+  const isPransibal      = !!(auth?.phone && users[auth.phone]?.isSuperAdmin);
+  const canEditStock      = !!(auth?.phone && users[auth.phone]?.permissions?.canEditStock);
+  const canEditCredit     = !!(auth?.phone && users[auth.phone]?.permissions?.canEditCredit);
+  const canEditSuppliers  = !!(auth?.phone && users[auth.phone]?.permissions?.canEditSuppliers);
+  const canEditRepair     = !!(auth?.phone && users[auth.phone]?.permissions?.canEditRepair);
+  const canViewStaffPerm      = !!(auth?.phone && users[auth.phone]?.permissions?.canViewStaff);
+  const canViewSuppliersPerm  = !!(auth?.phone && users[auth.phone]?.permissions?.canViewSuppliers);
 
   const isSuper = role === 'super_admin';
   const isAdmin = role === 'admin' || isSuper;
@@ -11,53 +20,55 @@ export function usePermissions() {
 
   return {
     role,
+    isPransibal,
     isSuper,
     isAdmin,
     isStaff,
     isView,
 
     // ───── الستوك ─────
-    canSell:          !isView,          // كل الأدوار ما عدا view
-    canAddProduct:    isAdmin,          // admin+
-    canEditProduct:   isAdmin,          // admin+
-    canDeleteDirect:  isAdmin,          // admin+ يحذف مباشرة
-    canRequestDelete: isStaff,          // staff يرسل طلب حذف
-    canApproveDelete: isAdmin,          // admin+ يوافق/يرفض طلبات الحذف
+    canSell:          !isView,
+    canReturn:        !isView,
+    canAddProduct:    isAdmin,
+    canEditProduct:   isAdmin || canEditStock,
+    canDeleteDirect:  isPransibal,
+    canRequestDelete: false,
+    canApproveDelete: isPransibal,
 
     // ───── الكريدي ─────
     canAddCustomer:   isAdmin,
-    canEditCustomer:  isSuper,
-    canDeleteCustomer: isAdmin,
-    canRecordZaad:    !isView,          // staff + admin+ يزيدو كريدي
-    canRecordPayment: isAdmin,          // admin+ فقط يسجل التسديد
+    canEditCustomer:  isSuper || canEditCredit,
+    canDeleteCustomer: isPransibal,
+    canRecordZaad:    !isView,
+    canRecordPayment: isAdmin,    // نقود: admin+ فقط
 
     // ───── الموردين ─────
-    canViewSuppliers: isAdmin,
-    canAddSupplier:   isSuper,
-    canEditSupplier:  isSuper,
-    canDeleteSupplier: isSuper,
-    canSupplierTransaction: isAdmin,    // شراء أو تسديد
-    canManageChecks:  isAdmin,
+    canViewSuppliers:       isPransibal || canViewSuppliersPerm,
+    canAddSupplier:         isPransibal,
+    canEditSupplier:        isPransibal || canEditSuppliers,
+    canDeleteSupplier:      isPransibal,
+    canSupplierTransaction: isPransibal || canViewSuppliersPerm,
+    canManageChecks:        isPransibal || canViewSuppliersPerm,
 
     // ───── الإصلاح ─────
     canRegisterRepair: !isView,
-    canEditRepair:    isAdmin,
-    canCancelRepair:  isSuper,
+    canEditRepair:     isAdmin || canEditRepair,
+    canCancelRepair:   isPransibal,
 
     // ───── الحصيلة ─────
-    canViewReport:    isAdmin,
-    canResetReport:   isSuper,
+    canViewReport:  isAdmin,
+    canResetReport: isPransibal,
 
     // ───── الخدام والمصاريف ─────
-    canViewStaff:     isAdmin,
-    canManageEmployees: isSuper,
-    canAddExpense:    isAdmin,
-    canAddIncome:     isSuper,
+    canViewStaff:       isPransibal || canViewStaffPerm,
+    canManageEmployees: isPransibal,
+    canAddExpense:      isSuper,
+    canAddIncome:       isPransibal,
 
     // ───── الإدارة ─────
     canViewAdmin:     isAdmin,
-    canManageUsers:   isSuper,
-    canManageBackup:  isSuper,
-    canResetPin:      isSuper,
+    canManageUsers:   isPransibal,
+    canManageBackup:  isPransibal,
+    canResetPin:      isPransibal,
   };
 }

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+﻿import { useState, useMemo, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert,
   Modal, TextInput,
@@ -8,6 +8,7 @@ import { router } from 'expo-router';
 import { useAppStore } from '../../src/store/appStore';
 import { formatMAD, nowDate, getFolderColor } from '../../src/utils/helpers';
 import { usePermissions } from '../../src/hooks/usePermissions';
+import AppHeader from '../../src/components/AppHeader';
 
 type Filter = 'today' | 'week' | 'month' | 'year' | 'archive';
 
@@ -33,12 +34,19 @@ function getWeekStart(d: Date): Date {
 }
 
 const INTERNAL = ['📦', '🗑️', '📌', '📒', '💰'];
+
+const AR_MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليوز','غشت','شتنبر','أكتوبر','نونبر','دجنبر'];
+function formatMonthKey(mk: string): string {
+  const [y, m] = mk.split('_');
+  const idx = parseInt(m, 10) - 1;
+  return `${AR_MONTHS[idx] ?? m} ${y}`;
+}
 function isInternal(name: string) {
   return INTERNAL.some(p => name?.startsWith(p));
 }
 
 export default function ReportScreen() {
-  const { app, updateApp } = useAppStore();
+  const { app, updateApp, ensureMonthsLoaded } = useAppStore();
   const perm = usePermissions();
   const { date: today, monthKey } = nowDate();
   const yr = today.split('/')[2];
@@ -47,9 +55,37 @@ export default function ReportScreen() {
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
   const [expandedSaleId, setExpandedSaleId] = useState<string | null>(null);
   const [selectedArchiveMonth, setSelectedArchiveMonth] = useState<string | null>(null);
+  const [drillMonth, setDrillMonth] = useState<string | null>(null);
+  const [phoneFilter, setPhoneFilter] = useState<'today'|'week'|'month'|'year'>('today');
+  const [phoneDrill, setPhoneDrill] = useState<string|null>(null);
+  const [accFilter, setAccFilter] = useState<'today'|'week'|'month'|'year'>('today');
+  const [accDrill, setAccDrill] = useState<string|null>(null);
+  const [archiveLoading, setArchiveLoading] = useState(false);
+
+  // Load historical months when needed
+  useEffect(() => {
+    const needYear = filter === 'year' || phoneFilter === 'year' || accFilter === 'year';
+    if (needYear) {
+      const yearNum = parseInt(yr, 10);
+      const curMonth = new Date().getMonth() + 1;
+      const months: string[] = [];
+      for (let m = 1; m <= curMonth; m++) {
+        months.push(`${yearNum}_${String(m).padStart(2, '0')}`);
+      }
+      ensureMonthsLoaded(months);
+    }
+    if (filter === 'archive' && (app.salesMonths ?? []).length > 0) {
+      setArchiveLoading(true);
+      ensureMonthsLoaded(app.salesMonths ?? []).then(() => setArchiveLoading(false));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter, phoneFilter, accFilter, app.salesMonths?.length]);
   const [resetModal, setResetModal] = useState(false);
   const [resetPin, setResetPin] = useState('');
   const [resetErr, setResetErr] = useState(false);
+  const [addCustOpen, setAddCustOpen] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newPhone, setNewPhone] = useState('');
 
   const allSales = app.todaySales ?? [];
 
@@ -125,7 +161,26 @@ export default function ReportScreen() {
     return allSales.filter(s => s.monthKey === selectedArchiveMonth && !isInternal(s.name ?? ''));
   }, [allSales, selectedArchiveMonth]);
 
+  const CORE_FOLDERS = ['جديد', 'مستعمل', 'LCD', 'إصلاح مانيال'];
+  const otherSales = realSales.filter(s => !CORE_FOLDERS.includes(s.cat ?? ''));
+  const otherRevenue = otherSales.reduce((sum, r) => sum + (r.sell || 0), 0);
+  const otherProfit  = otherSales.reduce((sum, r) => sum + ((r.sell || 0) - (r.buy || 0)), 0);
+
+  const otherStockItems = Object.values(app.stock ?? {}).filter(i => !i.pendingDeletion && !CORE_FOLDERS.includes(i.cat ?? ''));
+  const otherCapital    = otherStockItems.reduce((sum, i) => sum + ((i.buy || 0) * (i.qty || 0)), 0);
+  const otherSellValue  = otherStockItems.reduce((sum, i) => sum + ((i.sell || 0) * (i.qty || 0)), 0);
+  const otherItemCount  = otherStockItems.length;
+  const otherTotalQty   = otherStockItems.reduce((sum, i) => sum + (i.qty || 0), 0);
+
   const folders = app.folders ?? [];
+
+  const selectedColors = useMemo(() => {
+    if (!selectedCat) return null;
+    if (selectedCat === '__credit__') return { bg: '#fffbeb', fg: '#d97706' };
+    if (selectedCat === '__other__') return { bg: '#fdf4ff', fg: '#a21caf' };
+    const f = folders.find(fl => fl.name === selectedCat);
+    return f ? getFolderColor(f) : { bg: '#f1f5f9', fg: '#5c67f2' };
+  }, [selectedCat, folders]);
 
   function folderStats(folderName: string) {
     const sales = realSales.filter(s => s.cat === folderName);
@@ -151,6 +206,20 @@ export default function ReportScreen() {
     ]);
   }
 
+  function addCustomer() {
+    const name = newName.trim();
+    if (!name) { Alert.alert('', 'اكتب اسم الزبون'); return; }
+    const id = Date.now().toString();
+    updateApp(prev => ({
+      ...prev,
+      credit: { ...prev.credit, [id]: { name, phone: newPhone.trim(), total: 0, logs: [] } },
+    }));
+    setAddCustOpen(false);
+    setNewName('');
+    setNewPhone('');
+    router.push(`/customer/${encodeURIComponent(id)}`);
+  }
+
   function tryReset() {
     const correct = app.resetPin || '0000';
     if (resetPin === correct) {
@@ -162,6 +231,37 @@ export default function ReportScreen() {
       setResetErr(true);
       setResetPin('');
     }
+  }
+
+  const PHONE_CATS = ['جديد', 'مستعمل', 'LCD'];
+
+  function renderPhoneRow(sale: (typeof realSales)[0]) {
+    const isReturn = (sale.sell || 0) < 0;
+    return (
+      <View key={sale.nid} style={{ backgroundColor: isReturn ? '#fef2f2' : '#f8fafc', borderRadius: 14, borderWidth: 1.5, borderColor: isReturn ? '#fca5a5' : '#e2e8f0', padding: 12, marginBottom: 8, gap: 5 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text style={{ fontWeight: '900', color: isReturn ? '#ef4444' : '#1e293b', fontSize: 14 }}>
+            {isReturn ? '↩️ رجوع' : '✅ مباع'}
+          </Text>
+          <Text style={{ fontWeight: '900', color: isReturn ? '#ef4444' : '#16a34a', fontSize: 16 }}>
+            {isReturn ? '-' : ''}{formatMAD(Math.abs(sale.sell || 0))}
+          </Text>
+        </View>
+        <Text style={{ fontWeight: '700', color: '#1e293b', fontSize: 13, textAlign: 'right' }}>{sale.name}</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end', marginTop: 2 }}>
+          <Text style={{ fontSize: 11, color: '#64748b', backgroundColor: '#f1f5f9', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>📅 {sale.dateString} {sale.time}</Text>
+          {sale.seller ? <Text style={{ fontSize: 11, color: '#64748b', backgroundColor: '#f1f5f9', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>🛒 {sale.seller}</Text> : null}
+          {sale.addedBy ? <Text style={{ fontSize: 11, color: '#64748b', backgroundColor: '#f1f5f9', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>📦 {sale.addedBy}</Text> : null}
+          {sale.editedBy ? <Text style={{ fontSize: 11, color: '#f59e0b', backgroundColor: '#fffbeb', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>✏️ {sale.editedBy}</Text> : null}
+          {isReturn && sale.returnReason ? <Text style={{ fontSize: 11, color: '#ef4444', fontWeight: '800', backgroundColor: '#fef2f2', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>⚠️ {sale.returnReason}</Text> : null}
+        </View>
+        {perm.isAdmin && (
+          <TouchableOpacity onPress={() => deleteSale(sale.nid, sale.name)} style={{ alignSelf: 'flex-start', marginTop: 4 }}>
+            <Text style={{ fontSize: 11, color: '#ef4444' }}>🗑️ حذف</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
   }
 
   function renderSaleRow(sale: (typeof realSales)[0]) {
@@ -189,12 +289,12 @@ export default function ReportScreen() {
         {expanded && (
           <View style={s.opDetail}>
             <View style={s.opDetailRow}>
-              <Text style={s.opDetailVal}>{formatMAD(sale.buy)}</Text>
               <Text style={s.opDetailLabel}>سعر الشراء</Text>
+              <Text style={s.opDetailVal}>{formatMAD(sale.buy)}</Text>
             </View>
             <View style={s.opDetailRow}>
-              <Text style={s.opDetailVal}>{sale.seller || '—'}</Text>
               <Text style={s.opDetailLabel}>البائع</Text>
+              <Text style={s.opDetailVal}>{sale.seller || '—'}</Text>
             </View>
             {perm.isAdmin && (
               <TouchableOpacity
@@ -212,22 +312,11 @@ export default function ReportScreen() {
 
   return (
     <SafeAreaView style={s.root}>
-      {/* Header */}
-      <View style={s.header}>
-        <Text style={s.headerTitle}><Text style={s.dot}>● </Text>الحصيلة المالية 📊</Text>
-      </View>
-
-      {/* Action buttons — 2 red buttons like web */}
-      <View style={s.actionRow}>
-        <TouchableOpacity style={s.actionBtn} onPress={() => router.back()} activeOpacity={0.85}>
-          <Text style={s.actionBtnTxt}>← للإدارة</Text>
-        </TouchableOpacity>
-        {perm.isAdmin && (
-          <TouchableOpacity style={s.actionBtn} onPress={() => setResetModal(true)} activeOpacity={0.85}>
-            <Text style={s.actionBtnTxt}>🗑️ تصفير الحصيلة</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+      <AppHeader
+        title="الحصيلة المالية 📊"
+        onBack={() => router.back()}
+        rightAction={perm.isAdmin ? { label: '🗑️ تصفير', onPress: () => setResetModal(true) } : undefined}
+      />
 
       {/* Filter tabs — pill style, gold active */}
       <View style={s.tabWrap}>
@@ -241,6 +330,7 @@ export default function ReportScreen() {
                 setSelectedCat(null);
                 setSelectedArchiveMonth(null);
                 setExpandedSaleId(null);
+                setDrillMonth(null);
               }}
             >
               <Text style={[s.tabTxt, filter === t.key && s.tabTxtActive]}>{t.label}</Text>
@@ -254,6 +344,7 @@ export default function ReportScreen() {
             setSelectedCat(null);
             setSelectedArchiveMonth(null);
             setExpandedSaleId(null);
+            setDrillMonth(null);
           }}
         >
           <Text style={[s.tabTxt, filter === 'archive' && s.tabTxtActive]}>📦 الأرشيف</Text>
@@ -273,7 +364,7 @@ export default function ReportScreen() {
                 >
                   <Text style={s.archiveBackTxt}>← العودة للأرشيف</Text>
                 </TouchableOpacity>
-                <Text style={s.cardTitle}>📅 {selectedArchiveMonth}</Text>
+                <Text style={s.cardTitle}>📅 {formatMonthKey(selectedArchiveMonth)}</Text>
                 {archiveMonthSales.length === 0
                   ? <Text style={s.emptyTxt}>لا توجد عمليات</Text>
                   : archiveMonthSales.map(sale => renderSaleRow(sale))
@@ -282,7 +373,9 @@ export default function ReportScreen() {
             ) : (
               <View style={s.card}>
                 <Text style={s.cardTitle}>📁 الأرشيف الشهري</Text>
-                {archive.length === 0 ? (
+                {archiveLoading ? (
+                  <Text style={[s.emptyTxt, { color: '#94a3b8' }]}>⏳ جاري تحميل الأرشيف...</Text>
+                ) : archive.length === 0 ? (
                   <Text style={s.emptyTxt}>لا يوجد أرشيف بعد</Text>
                 ) : archive.map(m => (
                   <TouchableOpacity
@@ -291,17 +384,17 @@ export default function ReportScreen() {
                     onPress={() => setSelectedArchiveMonth(m.monthKey)}
                     activeOpacity={0.75}
                   >
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.archiveMonth}>{m.monthKey}</Text>
-                      <Text style={s.archiveCount}>{m.count} عملية</Text>
-                    </View>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={s.archiveRevenue}>{formatMAD(m.revenue)}</Text>
+                    <Text style={s.archiveChev}>←</Text>
+                    <View style={{ alignItems: 'flex-start' }}>
+                      <Text style={[s.archiveRevenue, { color: '#16a34a' }]}>{formatMAD(m.revenue)}</Text>
                       <Text style={[s.archiveProfit, { color: m.profit >= 0 ? '#10b981' : '#ef4444' }]}>
-                        {m.profit >= 0 ? '+' : ''}{formatMAD(m.profit)}
+                        {m.profit >= 0 ? '+' : ''}{formatMAD(m.profit)} ربح
                       </Text>
                     </View>
-                    <Text style={s.archiveChev}>←</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.archiveMonth}>{formatMonthKey(m.monthKey)}</Text>
+                      <Text style={s.archiveCount}>{m.count} عملية</Text>
+                    </View>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -312,94 +405,634 @@ export default function ReportScreen() {
         {/* ── LIVE STATS (today / week / month / year) ── */}
         {filter !== 'archive' && (
           <>
-            {/* Top 3 stat cards — all gold like web */}
+            {/* Top 3 stat cards */}
             <View style={s.statBox}>
-              <View style={[s.statCard, { borderBottomColor: '#d97706' }]}>
-                <Text style={s.statLabel}>رأس المال{'\n'}المتداول</Text>
-                <Text style={[s.statVal, { color: '#d97706' }]}>{formatMAD(capital)}</Text>
+              <View style={[s.statCard, { backgroundColor: '#1e3a8a', borderColor: '#1e3a8a' }]}>
+                <Text style={[s.statLabel, { color: '#bfdbfe' }]}>رأس المال{'\n'}المتداول</Text>
+                <Text style={[s.statVal, { color: '#fff' }]}>{formatMAD(otherCapital)}</Text>
               </View>
-              <View style={[s.statCard, { borderBottomColor: '#d97706' }]}>
-                <Text style={s.statLabel}>المبيعات{'\n'}الإجمالية</Text>
-                <Text style={[s.statVal, { color: '#d97706' }]}>{formatMAD(revenue)}</Text>
+              <View style={[s.statCard, { backgroundColor: '#d97706', borderColor: '#d97706' }]}>
+                <Text style={[s.statLabel, { color: '#fef9c3' }]}>المبيعات{'\n'}الإجمالية</Text>
+                <Text style={[s.statVal, { color: '#fff' }]}>{formatMAD(otherRevenue)}</Text>
               </View>
-              <View style={[s.statCard, { borderBottomColor: '#d97706', backgroundColor: '#fffbeb' }]}>
-                <Text style={[s.statLabel, { color: '#92400e' }]}>الربح{'\n'}الصافي 💸</Text>
-                <Text style={[s.statVal, { color: profit >= 0 ? '#d97706' : '#ef4444' }]}>
-                  {formatMAD(profit)}
-                </Text>
+              <View style={[s.statCard, { backgroundColor: otherProfit >= 0 ? '#16a34a' : '#dc2626', borderColor: otherProfit >= 0 ? '#16a34a' : '#dc2626' }]}>
+                <Text style={[s.statLabel, { color: 'rgba(255,255,255,0.85)' }]}>الربح{'\n'}الصافي 💸</Text>
+                <Text style={[s.statVal, { color: '#fff' }]}>{formatMAD(otherProfit)}</Text>
               </View>
             </View>
 
-            {/* Category mini cards — 3 columns like web */}
+            {/* Category mini cards — 3 columns: جديد → مستعمل → إصلاح → LCD → كريدي → أخرى */}
             <View style={s.subGrid}>
-              {/* Credit card */}
-              <TouchableOpacity
-                style={[s.subCard, { borderTopColor: '#d97706' },
-                  selectedCat === '__credit__' && s.subCardActive]}
-                onPress={() => {
-                  setSelectedCat(selectedCat === '__credit__' ? null : '__credit__');
-                  setExpandedSaleId(null);
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={[s.subCatName, { color: '#d97706' }]}>📒 الكريدي{'\n'}العام</Text>
-                <Text style={s.subStatLine}><Text style={[s.subStatVal, { color: '#d97706' }]}>{formatMAD(creditTotal)}</Text></Text>
-                <Text style={s.subStatLine}>الديون: <Text style={s.subStatNum}>{Object.values(app.credit ?? {}).length}</Text></Text>
-              </TouchableOpacity>
-
-              {folders.filter(f => f.colorClass !== 'folder-acc').map(f => {
+              {/* 1-4: Core folders in fixed order */}
+              {['جديد', 'مستعمل', 'إصلاح مانيال', 'LCD'].map(coreName => {
+                const f = folders.find(fl =>
+                  fl.name === coreName ||
+                  (coreName === 'إصلاح مانيال' && (fl.special === 'repair' || fl.name === 'إصلاح'))
+                );
+                if (!f) return null;
                 const st  = folderStats(f.name);
-                const col = getFolderColor(f).fg;
-                const isRepair = f.name === 'إصلاح' || f.special === 'repair';
+                const fColor = getFolderColor(f);
+                const col = fColor.fg;
+                const isRepair = f.name === 'إصلاح' || f.special === 'repair' || f.name === 'إصلاح مانيال';
                 return (
                   <TouchableOpacity
                     key={f.id ?? f.name}
-                    style={[s.subCard, { borderTopColor: col },
-                      selectedCat === f.name && s.subCardActive]}
-                    onPress={() => {
-                      setSelectedCat(selectedCat === f.name ? null : f.name);
-                      setExpandedSaleId(null);
-                    }}
+                    style={[s.subCard, { borderTopColor: col }, selectedCat === f.name && { backgroundColor: fColor.bg, borderColor: col, borderWidth: 3 }]}
+                    onPress={() => { setSelectedCat(selectedCat === f.name ? null : f.name); setExpandedSaleId(null); setDrillMonth(null); setPhoneFilter('today'); setPhoneDrill(null); setAccFilter('today'); setAccDrill(null); }}
                     activeOpacity={0.8}
                   >
-                    <Text style={[s.subCatName, { color: col }]}>{f.icon ?? '📁'} {f.name}</Text>
-                    <Text style={s.subStatLine}>
-                      {isRepair ? 'المدخول:' : `المبيعات: ${st.count}`}
-                      {isRepair && <Text style={s.subStatNum}> {formatMAD(st.revenue)}</Text>}
-                    </Text>
-                    <Text style={s.subStatLine}>
-                      الربح: <Text style={[s.subStatNum, { color: st.profit >= 0 ? '#10b981' : '#ef4444' }]}>
-                        {formatMAD(st.profit)}
+                    <View style={s.subCardInner}>
+                      <Text style={[s.subCatName, { color: col }]}>{f.icon ?? '📁'} {f.name}</Text>
+                      <Text style={s.subStatLine}>
+                        {isRepair ? 'المدخول:' : `المبيعات: ${st.count}`}
+                        {isRepair && <Text style={s.subStatNum}> {formatMAD(st.revenue)}</Text>}
                       </Text>
-                    </Text>
+                      <Text style={s.subStatLine}>
+                        الربح: <Text style={[s.subStatNum, { color: st.profit >= 0 ? '#10b981' : '#ef4444' }]}>
+                          {formatMAD(st.profit)}
+                        </Text>
+                      </Text>
+                    </View>
                   </TouchableOpacity>
                 );
               })}
+
+              {/* 5: كريدي */}
+              <TouchableOpacity
+                style={[s.subCard, { borderTopColor: '#d97706' }, selectedCat === '__credit__' && { backgroundColor: '#fffbeb', borderColor: '#d97706', borderWidth: 3 }]}
+                onPress={() => { setSelectedCat(selectedCat === '__credit__' ? null : '__credit__'); setExpandedSaleId(null); setDrillMonth(null); setPhoneFilter('today'); setPhoneDrill(null); setAccFilter('today'); setAccDrill(null); }}
+                activeOpacity={0.8}
+              >
+                <View style={s.subCardInner}>
+                  <Text style={[s.subCatName, { color: '#d97706' }]}>📒 الكريدي{'\n'}العام</Text>
+                  <Text style={s.subStatLine}><Text style={[s.subStatVal, { color: '#d97706' }]}>{formatMAD(creditTotal)}</Text></Text>
+                  <Text style={s.subStatLine}>الديون: <Text style={s.subStatNum}>{Object.values(app.credit ?? {}).length}</Text></Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Non-core non-acc folders */}
+              {folders.filter(f =>
+                f.colorClass !== 'folder-acc' &&
+                !['جديد', 'مستعمل', 'LCD', 'إصلاح مانيال'].includes(f.name) &&
+                f.special !== 'repair' &&
+                f.name !== 'إصلاح'
+              ).map(f => {
+                const st  = folderStats(f.name);
+                const col = getFolderColor(f).fg;
+                return (
+                  <TouchableOpacity
+                    key={f.id ?? f.name}
+                    style={[s.subCard, { borderTopColor: col }, selectedCat === f.name && { backgroundColor: getFolderColor(f).bg, borderColor: col, borderWidth: 3 }]}
+                    onPress={() => { setSelectedCat(selectedCat === f.name ? null : f.name); setExpandedSaleId(null); setDrillMonth(null); setPhoneFilter('today'); setPhoneDrill(null); setAccFilter('today'); setAccDrill(null); }}
+                    activeOpacity={0.8}
+                  >
+                    <View style={s.subCardInner}>
+                      <Text style={[s.subCatName, { color: col }]}>{f.icon ?? '📁'} {f.name}</Text>
+                      <Text style={s.subStatLine}>المبيعات: {st.count}</Text>
+                      <Text style={s.subStatLine}>
+                        الربح: <Text style={[s.subStatNum, { color: st.profit >= 0 ? '#10b981' : '#ef4444' }]}>
+                          {formatMAD(st.profit)}
+                        </Text>
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+
+              {/* آخر: أخرى */}
+              <TouchableOpacity
+                style={[s.subCard, { borderTopColor: '#e879f9' }, selectedCat === '__other__' && { backgroundColor: '#fdf4ff', borderColor: '#a21caf', borderWidth: 3 }]}
+                onPress={() => { setSelectedCat(selectedCat === '__other__' ? null : '__other__'); setExpandedSaleId(null); setDrillMonth(null); setPhoneFilter('today'); setPhoneDrill(null); setAccFilter('today'); setAccDrill(null); }}
+                activeOpacity={0.8}
+              >
+                <View style={s.subCardInner}>
+                  <Text style={[s.subCatName, { color: '#a21caf' }]}>🎧 أخرى</Text>
+                  <Text style={s.subStatLine}>المبيعات: {otherSales.length}</Text>
+                  <Text style={s.subStatLine}>الربح: <Text style={[s.subStatNum, { color: otherProfit >= 0 ? '#10b981' : '#ef4444' }]}>{formatMAD(otherProfit)}</Text></Text>
+                </View>
+              </TouchableOpacity>
             </View>
 
             {/* Sales list — appears when a category is selected */}
-            {selectedCat && selectedCat !== '__credit__' && (
-              <View style={s.card}>
-                <Text style={s.cardTitle}>
-                  📋 {selectedCat} ({catSales(selectedCat).length} عملية)
-                </Text>
-                {catSales(selectedCat).length === 0 ? (
-                  <Text style={s.emptyTxt}>لا توجد عمليات في هذه الفترة</Text>
-                ) : (
-                  catSales(selectedCat).map(sale => renderSaleRow(sale))
+            {selectedCat && selectedCat !== '__credit__' && selectedCat !== '__other__' && (() => {
+              const isPhone = PHONE_CATS.includes(selectedCat);
+              const cardStyle = [s.card, selectedColors && { backgroundColor: selectedColors.bg, borderColor: selectedColors.fg, borderWidth: 3 }] as any;
+              const titleColor = selectedColors?.fg ?? '#1e293b';
+
+              // ── PHONE CATEGORIES: own filter ──
+              if (isPhone) {
+                const todayDate = parseDate(today);
+                const weekStart = getWeekStart(todayDate);
+                const phoneSales = [...(allSales)].filter(s => {
+                  if (!s.dateString || isInternal(s.name ?? '') || s.cat !== selectedCat) return false;
+                  const sDate = parseDate(s.dateString);
+                  switch (phoneFilter) {
+                    case 'today': return s.dateString === today;
+                    case 'week':  return sDate >= weekStart && sDate <= todayDate;
+                    case 'month': return s.monthKey === monthKey;
+                    case 'year':  return s.yearKey === yr || s.dateString?.endsWith(`/${yr}`);
+                  }
+                }).reverse();
+
+                const PHONE_TABS: { key: typeof phoneFilter; label: string }[] = [
+                  { key: 'today', label: 'يوم' },
+                  { key: 'week',  label: 'أسبوع' },
+                  { key: 'month', label: 'شهر' },
+                  { key: 'year',  label: 'سنة' },
+                ];
+
+                function PhoneSummary({ items }: { items: typeof phoneSales }) {
+                  const stockCount    = Object.values(app.stock ?? {}).filter(i => i.cat === selectedCat && !i.pendingDeletion).reduce((sum, i) => sum + (i.qty || 0), 0);
+                  const archiveCount  = (app.archiveSales ?? []).filter(a => a.cat === selectedCat).length;
+                  const totalCount    = stockCount;
+                  const allCatSales   = allSales.filter(s => s.cat === selectedCat && !isInternal(s.name ?? '') && (s.sell || 0) > 0);
+                  const soldBuyCost   = allCatSales.reduce((sum, r) => sum + (r.buy || 0), 0);
+                  const stockBuyCost  = Object.values(app.stock ?? {}).filter(i => i.cat === selectedCat && !i.pendingDeletion).reduce((sum, i) => sum + (i.buy || 0) * (i.qty || 0), 0);
+                  const totalRev      = soldBuyCost + stockBuyCost;
+                  const periodSold    = items.filter(r => (r.sell || 0) > 0);
+                  const periodRev     = periodSold.reduce((sum, r) => sum + (r.sell || 0), 0);
+                  const periodProfit  = items.reduce((sum, r) => sum + ((r.sell || 0) - (r.buy || 0)), 0);
+                  const S = { card: { borderRadius: 13, padding: 10, alignItems: 'center' as const, flex: 1 } };
+                  return (
+                    <View style={{ gap: 8, marginBottom: 14 }}>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <View style={[S.card, { backgroundColor: '#f0fdf4' }]}>
+                          <Text style={{ fontSize: 22, fontWeight: '900', color: '#16a34a' }}>{totalCount}</Text>
+                          <Text style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>عدد هواتف</Text>
+                        </View>
+                        <View style={[S.card, { backgroundColor: '#faf5ff' }]}>
+                          <Text style={{ fontSize: 14, fontWeight: '900', color: '#7c3aed' }}>{formatMAD(totalRev)}</Text>
+                          <Text style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>إجمالي</Text>
+                        </View>
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <View style={[S.card, { backgroundColor: '#eff6ff' }]}>
+                          <Text style={{ fontSize: 14, fontWeight: '900', color: '#2563eb' }}>{formatMAD(periodRev)}</Text>
+                          <Text style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>مبيعات</Text>
+                        </View>
+                        <View style={[S.card, { backgroundColor: periodProfit >= 0 ? '#f0fdf4' : '#fef2f2' }]}>
+                          <Text style={{ fontSize: 14, fontWeight: '900', color: periodProfit >= 0 ? '#16a34a' : '#ef4444' }}>{formatMAD(periodProfit)}</Text>
+                          <Text style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>ربح</Text>
+                        </View>
+                      </View>
+                    </View>
+                  );
+                }
+
+                // Period label shown under tabs
+                const weekStartStr = `${String(weekStart.getDate()).padStart(2,'0')}/${String(weekStart.getMonth()+1).padStart(2,'0')}`;
+                const weekEndStr   = `${String(todayDate.getDate()).padStart(2,'0')}/${String(todayDate.getMonth()+1).padStart(2,'0')}`;
+                const [mkYear, mkMonth] = monthKey.split('-');
+                const monthLabel = `${String(mkMonth).padStart(2,'0')}/${mkYear}`;
+                const periodLabel = phoneFilter === 'today' ? today
+                  : phoneFilter === 'week'  ? `${weekStartStr} ← ${weekEndStr}`
+                  : phoneFilter === 'month' ? monthLabel
+                  : `01/${yr} ← ${monthLabel}`;
+
+                // Sub-filter tabs row
+                const PhoneFilterTabs = (
+                  <View style={{ marginBottom: 14 }}>
+                    <View style={{ flexDirection: 'row', gap: 6, marginBottom: 6 }}>
+                      {PHONE_TABS.map(t => (
+                        <TouchableOpacity
+                          key={t.key}
+                          onPress={() => { setPhoneFilter(t.key); setPhoneDrill(null); }}
+                          style={{ flex: 1, paddingVertical: 7, borderRadius: 10,
+                            backgroundColor: phoneFilter === t.key ? titleColor : '#f1f5f9',
+                            alignItems: 'center' }}
+                          activeOpacity={0.75}
+                        >
+                          <Text style={{ fontSize: 12, fontWeight: '800',
+                            color: phoneFilter === t.key ? '#fff' : '#64748b' }}>{t.label}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    <Text style={{ textAlign: 'center', fontSize: 11, color: '#94a3b8', fontWeight: '600' }}>
+                      📅 {periodLabel}
+                    </Text>
+                  </View>
+                );
+
+                const usePhoneGroups = phoneFilter === 'year' || phoneFilter === 'month';
+                const phoneGroupKey = phoneFilter === 'year' ? 'monthKey' : 'dateString';
+
+                // Drill-down
+                if (usePhoneGroups && phoneDrill) {
+                  const drillSales = phoneSales.filter(s => (s[phoneGroupKey as keyof typeof s] as string) === phoneDrill);
+                  return (
+                    <View style={cardStyle}>
+                      <TouchableOpacity onPress={() => setPhoneDrill(null)} style={s.archiveBackBtn}>
+                        <Text style={s.archiveBackTxt}>← العودة</Text>
+                      </TouchableOpacity>
+                      <Text style={[s.cardTitle, { color: titleColor }]}>📋 {selectedCat} — {phoneDrill}</Text>
+                      {PhoneFilterTabs}
+                      <PhoneSummary items={drillSales} />
+                      {drillSales.length === 0
+                        ? <Text style={s.emptyTxt}>لا توجد عمليات</Text>
+                        : drillSales.map(sale => renderPhoneRow(sale))
+                      }
+                    </View>
+                  );
+                }
+
+                // Grouped view (month→days, year→months)
+                if (usePhoneGroups) {
+                  const groups: Record<string, typeof phoneSales> = {};
+                  for (const sale of phoneSales) {
+                    const key = (sale[phoneGroupKey as keyof typeof sale] as string) ?? '';
+                    if (!groups[key]) groups[key] = [];
+                    groups[key].push(sale);
+                  }
+                  const sorted = Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]));
+                  return (
+                    <View style={cardStyle}>
+                      <Text style={[s.cardTitle, { color: titleColor }]}>📋 {selectedCat}</Text>
+                      {PhoneFilterTabs}
+                      <PhoneSummary items={phoneSales} />
+                      {sorted.length === 0
+                        ? <Text style={s.emptyTxt}>لا توجد عمليات في هذه الفترة</Text>
+                        : sorted.map(([key, items]) => {
+                            const soldItems = items.filter(r => (r.sell || 0) > 0);
+                            const rev  = soldItems.reduce((sum, r) => sum + (r.sell || 0), 0);
+                            const prof = items.reduce((sum, r) => sum + ((r.sell || 0) - (r.buy || 0)), 0);
+                            return (
+                              <TouchableOpacity key={key} style={s.archiveRow} onPress={() => setPhoneDrill(key)} activeOpacity={0.75}>
+                                <View style={{ flex: 1 }}>
+                                  <Text style={s.archiveMonth}>{key}</Text>
+                                  <Text style={s.archiveCount}>{soldItems.length} هاتف</Text>
+                                </View>
+                                <View style={{ alignItems: 'flex-end' }}>
+                                  <Text style={s.archiveRevenue}>{formatMAD(rev)}</Text>
+                                  <Text style={[s.archiveProfit, { color: prof >= 0 ? '#10b981' : '#ef4444' }]}>
+                                    {prof >= 0 ? '+' : ''}{formatMAD(prof)}
+                                  </Text>
+                                </View>
+                                <Text style={s.archiveChev}>←</Text>
+                              </TouchableOpacity>
+                            );
+                          })
+                      }
+                    </View>
+                  );
+                }
+
+                // Flat list (today/week)
+                return (
+                  <View style={cardStyle}>
+                    <Text style={[s.cardTitle, { color: titleColor }]}>📋 {selectedCat}</Text>
+                    {PhoneFilterTabs}
+                    <PhoneSummary items={phoneSales} />
+                    {phoneSales.length === 0
+                      ? <Text style={s.emptyTxt}>لا توجد عمليات في هذه الفترة</Text>
+                      : phoneSales.map(sale => renderPhoneRow(sale))
+                    }
+                  </View>
+                );
+              }
+
+              // ── ACCESSORIES: own filter + summary ──
+              const isAcc = !!folders.find(f => f.name === selectedCat && f.colorClass === 'folder-acc');
+              if (isAcc) {
+                const todayDate2 = parseDate(today);
+                const weekStart2 = getWeekStart(todayDate2);
+                const accSales = [...allSales].filter(s => {
+                  if (!s.dateString || isInternal(s.name ?? '') || s.cat !== selectedCat) return false;
+                  const sDate = parseDate(s.dateString);
+                  switch (accFilter) {
+                    case 'today': return s.dateString === today;
+                    case 'week':  return sDate >= weekStart2 && sDate <= todayDate2;
+                    case 'month': return s.monthKey === monthKey;
+                    case 'year':  return s.yearKey === yr || s.dateString?.endsWith(`/${yr}`);
+                  }
+                }).reverse();
+
+                const ACC_TABS: { key: typeof accFilter; label: string }[] = [
+                  { key: 'today', label: 'يوم' },
+                  { key: 'week',  label: 'أسبوع' },
+                  { key: 'month', label: 'شهر' },
+                  { key: 'year',  label: 'سنة' },
+                ];
+
+                const weekStartStr2 = `${String(weekStart2.getDate()).padStart(2,'0')}/${String(weekStart2.getMonth()+1).padStart(2,'0')}`;
+                const weekEndStr2   = `${String(todayDate2.getDate()).padStart(2,'0')}/${String(todayDate2.getMonth()+1).padStart(2,'0')}`;
+                const [mkY2, mkM2]  = monthKey.split('-');
+                const monthLabel2   = `${String(mkM2).padStart(2,'0')}/${mkY2}`;
+                const accPeriodLabel = accFilter === 'today' ? today
+                  : accFilter === 'week'  ? `${weekStartStr2} ← ${weekEndStr2}`
+                  : accFilter === 'month' ? monthLabel2
+                  : `01/${yr} ← ${monthLabel2}`;
+
+                const AccFilterTabs = (
+                  <View style={{ marginBottom: 14 }}>
+                    <View style={{ flexDirection: 'row', gap: 6, marginBottom: 6 }}>
+                      {ACC_TABS.map(t => (
+                        <TouchableOpacity key={t.key}
+                          onPress={() => { setAccFilter(t.key); setAccDrill(null); }}
+                          style={{ flex: 1, paddingVertical: 7, borderRadius: 10,
+                            backgroundColor: accFilter === t.key ? titleColor : '#f1f5f9',
+                            alignItems: 'center' }}
+                          activeOpacity={0.75}>
+                          <Text style={{ fontSize: 12, fontWeight: '800',
+                            color: accFilter === t.key ? '#fff' : '#64748b' }}>{t.label}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    <Text style={{ textAlign: 'center', fontSize: 11, color: '#94a3b8', fontWeight: '600' }}>📅 {accPeriodLabel}</Text>
+                  </View>
+                );
+
+                const accRev      = accSales.filter(r => (r.sell||0) > 0).reduce((sum,r) => sum + (r.sell||0), 0);
+                const accProf     = accSales.reduce((sum,r) => sum + ((r.sell||0)-(r.buy||0)), 0);
+                const allAccSales = allSales.filter(s => s.cat === selectedCat && !isInternal(s.name ?? '') && (s.sell||0) > 0);
+                const accSoldBuy  = allAccSales.reduce((sum,r) => sum + (r.buy||0), 0);
+                const accStockBuy = Object.values(app.stock ?? {}).filter(i => i.cat === selectedCat && !i.pendingDeletion).reduce((sum,i) => sum + (i.buy||0)*(i.qty||0), 0);
+                const accTotalBuy = accSoldBuy + accStockBuy;
+                const AccSummary = (
+                  <View style={{ gap: 8, marginBottom: 14 }}>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <View style={{ flex: 1, backgroundColor: '#faf5ff', borderRadius: 12, padding: 10, alignItems: 'center' }}>
+                        <Text style={{ fontSize: 14, fontWeight: '900', color: '#7c3aed' }}>{formatMAD(accTotalBuy)}</Text>
+                        <Text style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>إجمالي</Text>
+                      </View>
+                      <View style={{ flex: 1, backgroundColor: '#eff6ff', borderRadius: 12, padding: 10, alignItems: 'center' }}>
+                        <Text style={{ fontSize: 14, fontWeight: '900', color: '#2563eb' }}>{formatMAD(accRev)}</Text>
+                        <Text style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>مبيعات</Text>
+                      </View>
+                      <View style={{ flex: 1, backgroundColor: accProf >= 0 ? '#f0fdf4' : '#fef2f2', borderRadius: 12, padding: 10, alignItems: 'center' }}>
+                        <Text style={{ fontSize: 14, fontWeight: '900', color: accProf >= 0 ? '#16a34a' : '#ef4444' }}>{formatMAD(accProf)}</Text>
+                        <Text style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>ربح</Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+
+                const useAccGroups = accFilter === 'year' || accFilter === 'month';
+                const accGroupKey  = accFilter === 'year' ? 'monthKey' : 'dateString';
+
+                if (useAccGroups && accDrill) {
+                  const drillSales = accSales.filter(s => (s[accGroupKey as keyof typeof s] as string) === accDrill);
+                  return (
+                    <View style={cardStyle}>
+                      <TouchableOpacity onPress={() => setAccDrill(null)} style={s.archiveBackBtn}>
+                        <Text style={s.archiveBackTxt}>← العودة</Text>
+                      </TouchableOpacity>
+                      <Text style={[s.cardTitle, { color: titleColor }]}>📋 {selectedCat} — {accDrill}</Text>
+                      {AccFilterTabs}{AccSummary}
+                      {drillSales.length === 0
+                        ? <Text style={s.emptyTxt}>لا توجد عمليات</Text>
+                        : drillSales.map(sale => renderSaleRow(sale))
+                      }
+                    </View>
+                  );
+                }
+
+                if (useAccGroups) {
+                  const groups: Record<string, typeof accSales> = {};
+                  for (const sale of accSales) {
+                    const key = (sale[accGroupKey as keyof typeof sale] as string) ?? '';
+                    if (!groups[key]) groups[key] = [];
+                    groups[key].push(sale);
+                  }
+                  const sorted = Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]));
+                  return (
+                    <View style={cardStyle}>
+                      <Text style={[s.cardTitle, { color: titleColor }]}>📋 {selectedCat}</Text>
+                      {AccFilterTabs}{AccSummary}
+                      {sorted.length === 0
+                        ? <Text style={s.emptyTxt}>لا توجد عمليات في هذه الفترة</Text>
+                        : sorted.map(([key, items]) => {
+                            const rev  = items.reduce((sum, r) => sum + (r.sell || 0), 0);
+                            const prof = items.reduce((sum, r) => sum + ((r.sell || 0) - (r.buy || 0)), 0);
+                            return (
+                              <TouchableOpacity key={key} style={s.archiveRow} onPress={() => setAccDrill(key)} activeOpacity={0.75}>
+                                <View style={{ flex: 1 }}>
+                                  <Text style={s.archiveMonth}>{key}</Text>
+                                  <Text style={s.archiveCount}>{items.length} عملية</Text>
+                                </View>
+                                <View style={{ alignItems: 'flex-end' }}>
+                                  <Text style={s.archiveRevenue}>{formatMAD(rev)}</Text>
+                                  <Text style={[s.archiveProfit, { color: prof >= 0 ? '#10b981' : '#ef4444' }]}>
+                                    {prof >= 0 ? '+' : ''}{formatMAD(prof)}
+                                  </Text>
+                                </View>
+                                <Text style={s.archiveChev}>←</Text>
+                              </TouchableOpacity>
+                            );
+                          })
+                      }
+                    </View>
+                  );
+                }
+
+                return (
+                  <View style={cardStyle}>
+                    <Text style={[s.cardTitle, { color: titleColor }]}>📋 {selectedCat}</Text>
+                    {AccFilterTabs}{AccSummary}
+                    {accSales.length === 0
+                      ? <Text style={s.emptyTxt}>لا توجد عمليات في هذه الفترة</Text>
+                      : accSales.map(sale => renderSaleRow(sale))
+                    }
+                  </View>
+                );
+              }
+
+              // ── OTHER NON-PHONE NON-ACC CATEGORIES: global filter ──
+              const sales = catSales(selectedCat);
+              const useGroups = filter === 'year' || filter === 'month';
+              const groupKey = filter === 'year' ? 'monthKey' : 'dateString';
+
+              if (useGroups && drillMonth) {
+                const drillSales = sales.filter(s => s[groupKey as keyof typeof s] === drillMonth);
+                return (
+                  <View style={cardStyle}>
+                    <TouchableOpacity onPress={() => { setDrillMonth(null); setExpandedSaleId(null); }} style={s.archiveBackBtn}>
+                      <Text style={s.archiveBackTxt}>← العودة</Text>
+                    </TouchableOpacity>
+                    <Text style={[s.cardTitle, { color: titleColor }]}>📋 {selectedCat} — {drillMonth}</Text>
+                    {drillSales.length === 0
+                      ? <Text style={s.emptyTxt}>لا توجد عمليات</Text>
+                      : drillSales.map(sale => renderSaleRow(sale))
+                    }
+                  </View>
+                );
+              }
+
+              if (useGroups) {
+                const groups: Record<string, typeof sales> = {};
+                for (const sale of sales) {
+                  const key = (sale[groupKey as keyof typeof sale] as string) ?? '';
+                  if (!groups[key]) groups[key] = [];
+                  groups[key].push(sale);
+                }
+                const sorted = Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]));
+                return (
+                  <View style={cardStyle}>
+                    <Text style={[s.cardTitle, { color: titleColor }]}>📋 {selectedCat} ({sales.length} عملية)</Text>
+                    {sorted.length === 0
+                      ? <Text style={s.emptyTxt}>لا توجد عمليات في هذه الفترة</Text>
+                      : sorted.map(([key, items]) => {
+                          const rev  = items.reduce((sum, r) => sum + (r.sell || 0), 0);
+                          const prof = items.reduce((sum, r) => sum + ((r.sell || 0) - (r.buy || 0)), 0);
+                          return (
+                            <TouchableOpacity key={key} style={s.archiveRow} onPress={() => { setDrillMonth(key); setExpandedSaleId(null); }} activeOpacity={0.75}>
+                              <View style={{ flex: 1 }}>
+                                <Text style={s.archiveMonth}>{key}</Text>
+                                <Text style={s.archiveCount}>{items.length} عملية</Text>
+                              </View>
+                              <View style={{ alignItems: 'flex-end' }}>
+                                <Text style={s.archiveRevenue}>{formatMAD(rev)}</Text>
+                                <Text style={[s.archiveProfit, { color: prof >= 0 ? '#10b981' : '#ef4444' }]}>
+                                  {prof >= 0 ? '+' : ''}{formatMAD(prof)}
+                                </Text>
+                              </View>
+                              <Text style={s.archiveChev}>←</Text>
+                            </TouchableOpacity>
+                          );
+                        })
+                    }
+                  </View>
+                );
+              }
+
+              return (
+                <View style={cardStyle}>
+                  <Text style={[s.cardTitle, { color: titleColor }]}>📋 {selectedCat} ({sales.length} عملية)</Text>
+                  {sales.length === 0
+                    ? <Text style={s.emptyTxt}>لا توجد عمليات في هذه الفترة</Text>
+                    : sales.map(sale => renderSaleRow(sale))
+                  }
+                </View>
+              );
+            })()}
+
+            {selectedCat === '__credit__' && (
+              <View style={[s.card, { backgroundColor: '#fffbeb', borderColor: '#d97706', borderWidth: 3 }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
+                  <Text style={[s.cardTitle, { color: '#d97706', marginBottom: 0, flex: 1 }]}>📒 الكريدي</Text>
+                  <TouchableOpacity
+                    style={{ backgroundColor: '#d97706', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 6 }}
+                    onPress={() => { setNewName(''); setNewPhone(''); setAddCustOpen(v => !v); }}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: '900', fontSize: 18 }}>{addCustOpen ? '✕' : '+'}</Text>
+                  </TouchableOpacity>
+                </View>
+                {addCustOpen && (
+                  <View style={{ backgroundColor: '#fff8e1', borderRadius: 14, padding: 12, marginBottom: 12, gap: 8 }}>
+                    <TextInput
+                      style={s.addInp}
+                      placeholder="اسم الزبون *"
+                      placeholderTextColor="#9ca3af"
+                      value={newName}
+                      onChangeText={setNewName}
+                      autoFocus
+                    />
+                    <TextInput
+                      style={s.addInp}
+                      placeholder="رقم الهاتف (اختياري)"
+                      placeholderTextColor="#9ca3af"
+                      value={newPhone}
+                      onChangeText={setNewPhone}
+                      keyboardType="phone-pad"
+                    />
+                    <TouchableOpacity
+                      style={{ backgroundColor: '#d97706', borderRadius: 12, paddingVertical: 12, alignItems: 'center' }}
+                      onPress={addCustomer}
+                    >
+                      <Text style={{ color: '#fff', fontWeight: '900', fontSize: 15 }}>إضافة ←</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                <View style={s.subRow}>
+                  <Text style={s.subRowLabel}>إجمالي الديون القائمة</Text>
+                  <Text style={[s.subRowVal, { color: '#d97706', fontSize: 22 }]}>{formatMAD(creditTotal)}</Text>
+                </View>
+                {Object.entries(app.credit ?? {})
+                  .filter(([, c]) => !c.pendingDeletion)
+                  .sort(([, a], [, b]) => (b.total || 0) - (a.total || 0))
+                  .map(([id, c]) => (
+                    <TouchableOpacity
+                      key={id}
+                      style={s.creditRow}
+                      onPress={() => router.push(`/customer/${encodeURIComponent(id)}`)}
+                      activeOpacity={0.75}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.creditName}>{c.name}</Text>
+                        {c.phone ? <Text style={s.creditPhone}>{c.phone}</Text> : null}
+                      </View>
+                      <Text style={s.creditChev}>←</Text>
+                      <Text style={[s.creditAmt, { color: (c.total || 0) > 0 ? '#ef4444' : '#10b981' }]}>
+                        {formatMAD(c.total || 0)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))
+                }
+                {Object.values(app.credit ?? {}).filter(c => !c.pendingDeletion).length === 0 && (
+                  <Text style={s.emptyTxt}>لا توجد ديون قائمة</Text>
                 )}
               </View>
             )}
 
-            {selectedCat === '__credit__' && (
-              <View style={[s.card, { backgroundColor: '#fffbeb', borderColor: '#fde68a' }]}>
-                <Text style={[s.cardTitle, { color: '#d97706' }]}>📒 الكريدي</Text>
-                <View style={s.subRow}>
-                  <Text style={[s.subRowVal, { color: '#d97706', fontSize: 22 }]}>{formatMAD(creditTotal)}</Text>
-                  <Text style={s.subRowLabel}>إجمالي الديون القائمة</Text>
+            {selectedCat === '__other__' && (() => {
+              const sales = [...otherSales].reverse();
+              const useGroups = filter === 'year' || filter === 'month';
+              const groupKey = filter === 'year' ? 'monthKey' : 'dateString';
+              const cardStyle = [s.card, { backgroundColor: '#fdf4ff', borderColor: '#a21caf', borderWidth: 3 }] as any;
+
+              if (useGroups && drillMonth) {
+                const drillSales = sales.filter(s => s[groupKey as keyof typeof s] === drillMonth);
+                return (
+                  <View style={cardStyle}>
+                    <TouchableOpacity onPress={() => { setDrillMonth(null); setExpandedSaleId(null); }} style={s.archiveBackBtn}>
+                      <Text style={s.archiveBackTxt}>← العودة</Text>
+                    </TouchableOpacity>
+                    <Text style={[s.cardTitle, { color: '#a21caf' }]}>🎧 أخرى — {drillMonth} ({drillSales.length} عملية)</Text>
+                    {drillSales.length === 0 ? <Text style={s.emptyTxt}>لا توجد عمليات</Text> : drillSales.map(sale => renderSaleRow(sale))}
+                  </View>
+                );
+              }
+
+              if (useGroups) {
+                const groups: Record<string, typeof sales> = {};
+                for (const sale of sales) {
+                  const key = (sale[groupKey as keyof typeof sale] as string) ?? '';
+                  if (!groups[key]) groups[key] = [];
+                  groups[key].push(sale);
+                }
+                const sorted = Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]));
+                return (
+                  <View style={cardStyle}>
+                    <Text style={[s.cardTitle, { color: '#a21caf' }]}>🎧 أخرى ({sales.length} عملية)</Text>
+                    {sorted.length === 0 ? <Text style={s.emptyTxt}>لا توجد عمليات في هذه الفترة</Text>
+                      : sorted.map(([key, items]) => {
+                          const rev  = items.reduce((sum, r) => sum + (r.sell || 0), 0);
+                          const prof = items.reduce((sum, r) => sum + ((r.sell || 0) - (r.buy || 0)), 0);
+                          return (
+                            <TouchableOpacity key={key} style={s.archiveRow} onPress={() => { setDrillMonth(key); setExpandedSaleId(null); }} activeOpacity={0.75}>
+                              <View style={{ flex: 1 }}>
+                                <Text style={s.archiveMonth}>{key}</Text>
+                                <Text style={s.archiveCount}>{items.length} عملية</Text>
+                              </View>
+                              <View style={{ alignItems: 'flex-end' }}>
+                                <Text style={s.archiveRevenue}>{formatMAD(rev)}</Text>
+                                <Text style={[s.archiveProfit, { color: prof >= 0 ? '#10b981' : '#ef4444' }]}>{prof >= 0 ? '+' : ''}{formatMAD(prof)}</Text>
+                              </View>
+                              <Text style={s.archiveChev}>←</Text>
+                            </TouchableOpacity>
+                          );
+                        })
+                    }
+                  </View>
+                );
+              }
+
+              return (
+                <View style={cardStyle}>
+                  <Text style={[s.cardTitle, { color: '#a21caf' }]}>🎧 أخرى ({sales.length} عملية)</Text>
+                  {sales.length === 0 ? <Text style={s.emptyTxt}>لا توجد عمليات في هذه الفترة</Text> : sales.map(sale => renderSaleRow(sale))}
                 </View>
-              </View>
-            )}
+              );
+            })()}
 
             {/* Hint when nothing selected */}
             {!selectedCat && (
@@ -430,8 +1063,8 @@ export default function ReportScreen() {
               {topSupplier && (topSupplier[1].total ?? 0) > 0 && (
                 <View style={s.topSupCard}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text style={[s.topSupDebt, { color: '#ef4444' }]}>{formatMAD(topSupplier[1].total ?? 0)}</Text>
                     <Text style={s.topSupName}>● أكثر مورد — {topSupplier[1].name ?? topSupplier[0]}</Text>
+                    <Text style={[s.topSupDebt, { color: '#ef4444' }]}>{formatMAD(topSupplier[1].total ?? 0)}</Text>
                   </View>
                   <Text style={{ color: '#64748b', fontSize: 11, fontWeight: '600', textAlign: 'right', marginTop: 4 }}>دين</Text>
                 </View>
@@ -464,6 +1097,39 @@ export default function ReportScreen() {
               </View>
             </View>
           </>
+        )}
+
+        {/* ── رأس مال الاكسسوار ── */}
+        {filter !== 'archive' && (
+          <View style={[s.card, { borderWidth: 2, borderColor: '#e879f9', backgroundColor: '#fdf4ff' }]}>
+            <Text style={[s.cardTitle, { color: '#a21caf' }]}>🎧 رأس مال الاكسسوار والأخرى</Text>
+            <View style={s.supGrid}>
+              <View style={[s.supCard, { borderTopColor: '#a21caf' }]}>
+                <Text style={[s.supLabel, { textAlign: 'left' }]}>عدد المنتجات</Text>
+                <Text style={[s.supVal, { color: '#a21caf', textAlign: 'left' }]}>{otherItemCount}</Text>
+              </View>
+              <View style={[s.supCard, { borderTopColor: '#7c3aed' }]}>
+                <Text style={[s.supLabel, { textAlign: 'left' }]}>إجمالي الكمية</Text>
+                <Text style={[s.supVal, { color: '#7c3aed', textAlign: 'left' }]}>{otherTotalQty} قطعة</Text>
+              </View>
+            </View>
+            <View style={s.supGrid}>
+              <View style={[s.supCard, { borderTopColor: '#0284c7' }]}>
+                <Text style={[s.supLabel, { textAlign: 'left' }]}>رأس المال 🏷️</Text>
+                <Text style={[s.supVal, { color: '#0284c7', textAlign: 'left' }]}>{formatMAD(otherCapital)}</Text>
+              </View>
+              <View style={[s.supCard, { borderTopColor: '#10b981' }]}>
+                <Text style={[s.supLabel, { textAlign: 'left' }]}>قيمة البيع 💰</Text>
+                <Text style={[s.supVal, { color: '#10b981', textAlign: 'left' }]}>{formatMAD(otherSellValue)}</Text>
+              </View>
+            </View>
+            <View style={[s.supCard, { borderTopColor: otherSellValue - otherCapital >= 0 ? '#10b981' : '#ef4444', marginTop: 4 }]}>
+              <Text style={[s.supLabel, { textAlign: 'left' }]}>هامش الربح المتوقع</Text>
+              <Text style={[s.supVal, { color: otherSellValue - otherCapital >= 0 ? '#10b981' : '#ef4444', textAlign: 'left' }]}>
+                {formatMAD(otherSellValue - otherCapital)}
+              </Text>
+            </View>
+          </View>
         )}
 
         <View style={{ height: 100 }} />
@@ -509,7 +1175,7 @@ export default function ReportScreen() {
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#f8fafc' },
+  root: { flex: 1, backgroundColor: 'transparent' },
 
   header: {
     backgroundColor: '#ffffff',
@@ -589,20 +1255,17 @@ const s = StyleSheet.create({
   statBox: { flexDirection: 'row', gap: 8 },
   statCard: {
     flex: 1,
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 12,
+    borderRadius: 10,
+    padding: 6,
     alignItems: 'center',
-    borderBottomWidth: 4,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderWidth: 2,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  statLabel: { fontSize: 10, color: '#64748b', fontWeight: '700', textAlign: 'center', marginBottom: 6, lineHeight: 14 },
+  statLabel: { fontSize: 10, color: '#64748b', fontWeight: '700', textAlign: 'center', marginBottom: 3, lineHeight: 13 },
   statVal:   { fontSize: 13, fontWeight: '900', textAlign: 'center' },
 
   // Category mini cards — 3 columns
@@ -621,17 +1284,34 @@ const s = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
   },
+  subCardInner: { width: '100%' },
   subCardActive: {
     backgroundColor: '#fffbeb',
     borderColor: '#d97706',
   },
-  subCatName: { fontSize: 11, fontWeight: '800', marginBottom: 6, textAlign: 'right', lineHeight: 16 },
-  subStatLine: { fontSize: 11, color: '#64748b', fontWeight: '600', textAlign: 'right', marginBottom: 2 },
+  subCatName: { fontSize: 11, fontWeight: '800', marginBottom: 6, lineHeight: 16, textAlign: 'left' },
+  subStatLine: { fontSize: 11, color: '#64748b', fontWeight: '600', marginBottom: 2, textAlign: 'left' },
   subStatVal:  { fontSize: 12, fontWeight: '900' },
   subStatNum:  { fontWeight: '800', color: '#1e293b' },
   subRow:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
   subRowLabel: { fontSize: 11, color: '#64748b', fontWeight: '700' },
   subRowVal:   { fontSize: 13, fontWeight: '800', color: '#1e293b' },
+
+  addInp: {
+    borderWidth: 1.5, borderColor: '#fde68a', borderRadius: 12,
+    padding: 12, fontSize: 14, color: '#1e293b',
+    backgroundColor: '#fff', fontWeight: '600', textAlign: 'right',
+  },
+  creditRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 10, paddingHorizontal: 4,
+    borderTopWidth: 1, borderTopColor: '#fde68a',
+    gap: 8,
+  },
+  creditName:  { fontSize: 14, fontWeight: '800', color: '#1e293b', textAlign: 'left' },
+  creditPhone: { fontSize: 11, color: '#94a3b8', fontWeight: '600', textAlign: 'left', marginTop: 2 },
+  creditAmt:   { fontSize: 15, fontWeight: '900' },
+  creditChev:  { fontSize: 16, color: '#d97706' },
 
   // Card container
   card: {
@@ -646,7 +1326,7 @@ const s = StyleSheet.create({
     shadowRadius: 12,
     elevation: 3,
   },
-  cardTitle: { fontSize: 15, fontWeight: '900', color: '#1e293b', textAlign: 'right', marginBottom: 14 },
+  cardTitle: { fontSize: 15, fontWeight: '900', color: '#1e293b', textAlign: 'left', marginBottom: 14 },
   emptyTxt:  { color: '#64748b', fontWeight: '700', fontSize: 14, textAlign: 'center', paddingVertical: 20 },
 
   // Operation rows
@@ -660,8 +1340,8 @@ const s = StyleSheet.create({
   },
   opRowExpanded: { borderColor: '#c7d2fe', backgroundColor: '#f5f3ff' },
   opMain: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 8 },
-  opName:   { fontSize: 14, fontWeight: '700', color: '#1e293b', textAlign: 'right' },
-  opMeta:   { fontSize: 11, color: '#94a3b8', fontWeight: '600', textAlign: 'right', marginTop: 2 },
+  opName:   { fontSize: 14, fontWeight: '700', color: '#1e293b', textAlign: 'left' },
+  opMeta:   { fontSize: 11, color: '#94a3b8', fontWeight: '600', textAlign: 'left', marginTop: 2 },
   opSell:   { fontSize: 14, fontWeight: '900', color: '#1e293b' },
   opProfit: { fontSize: 12, fontWeight: '800', marginTop: 2 },
 
@@ -703,8 +1383,8 @@ const s = StyleSheet.create({
     borderBottomColor: '#f1f5f9',
     gap: 8,
   },
-  archiveMonth:   { fontSize: 15, fontWeight: '800', color: '#1e293b', textAlign: 'right' },
-  archiveCount:   { fontSize: 12, color: '#64748b', fontWeight: '600', textAlign: 'right', marginTop: 2 },
+  archiveMonth:   { fontSize: 15, fontWeight: '800', color: '#1e293b' },
+  archiveCount:   { fontSize: 12, color: '#64748b', fontWeight: '600', marginTop: 2 },
   archiveRevenue: { fontSize: 14, fontWeight: '800', color: '#374151' },
   archiveProfit:  { fontSize: 13, fontWeight: '800', marginTop: 2 },
   archiveChev:    { fontSize: 16, color: '#94a3b8' },
@@ -725,9 +1405,9 @@ const s = StyleSheet.create({
     shadowRadius: 4,
     elevation: 1,
   },
-  supLabel: { fontSize: 11, color: '#64748b', fontWeight: '700', textAlign: 'right', marginBottom: 6 },
-  supVal:   { fontSize: 15, fontWeight: '900', textAlign: 'right' },
-  supSub:   { fontSize: 10, color: '#64748b', fontWeight: '600', marginTop: 2, textAlign: 'right' },
+  supLabel: { fontSize: 11, color: '#64748b', fontWeight: '700', textAlign: 'left', marginBottom: 6 },
+  supVal:   { fontSize: 15, fontWeight: '900', textAlign: 'left' },
+  supSub:   { fontSize: 10, color: '#64748b', fontWeight: '600', marginTop: 2, textAlign: 'left' },
 
   topSupCard: {
     backgroundColor: '#ffffff',

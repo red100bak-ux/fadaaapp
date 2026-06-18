@@ -48,7 +48,7 @@ export function getYearKey(): string {
 }
 
 export function makeSaleRecord(
-  overrides: Pick<SaleRecord, 'name' | 'sell' | 'buy' | 'cat' | 'seller'>,
+  overrides: Pick<SaleRecord, 'name' | 'sell' | 'buy' | 'cat' | 'seller'> & { addedBy?: string; editedBy?: string; returnReason?: string },
 ): SaleRecord {
   const { date, time, monthKey, yearKey } = nowDate();
   return {
@@ -64,6 +64,19 @@ export function makeSaleRecord(
 export function formatMAD(n: number): string {
   if (!n || isNaN(n)) return '0 د';
   return n.toLocaleString('fr-MA') + ' د';
+}
+
+export function contrastText(bgHex: string): string {
+  try {
+    const hex = bgHex.replace('#', '');
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance > 0.55 ? '#1e293b' : '#ffffff';
+  } catch {
+    return '#ffffff';
+  }
 }
 
 export function getItemsForFolder(

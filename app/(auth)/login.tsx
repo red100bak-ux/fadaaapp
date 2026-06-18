@@ -36,7 +36,7 @@ const ROLE_ICON: Record<UserRole, string> = {
 };
 
 export default function LoginScreen() {
-  const { app, setAuth, isLoaded } = useAppStore();
+  const { app, setAuth, updateApp, isLoaded } = useAppStore();
 
   const [phone, setPhone] = useState('');
   const [pin, setPin] = useState('');
@@ -83,6 +83,10 @@ export default function LoginScreen() {
       color: user.color || Colors.primary,
     };
     setAuth(auth);
+    updateApp(prev => ({
+      ...prev,
+      users: { ...prev.users, [targetPhone]: { ...prev.users[targetPhone], online: true, lastSeen: new Date().toISOString() } },
+    }));
     saveSavedAccount(auth);
     // حفظ الهاتف للبصمة
     const hasHardware = await LocalAuthentication.hasHardwareAsync();
@@ -238,7 +242,6 @@ export default function LoginScreen() {
                 placeholder="أدخل رقم الهاتف"
                 placeholderTextColor={Colors.textMuted}
                 keyboardType="number-pad"
-                textAlign="right"
                 returnKeyType="next"
                 onSubmitEditing={() => pinRef.current?.focus()}
                 autoComplete="off"
@@ -259,7 +262,6 @@ export default function LoginScreen() {
             secureTextEntry
             keyboardType="numeric"
             maxLength={6}
-            textAlign="right"
             returnKeyType="done"
             onSubmitEditing={handleLogin}
             autoComplete="off"
@@ -280,15 +282,6 @@ export default function LoginScreen() {
             )}
           </TouchableOpacity>
 
-          {biometricAvailable && (
-            <TouchableOpacity
-              style={styles.bioBtn}
-              onPress={handleBiometric}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.bioBtnText}>🔐 دخول بالبصمة</Text>
-            </TouchableOpacity>
-          )}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -347,6 +340,7 @@ const styles = StyleSheet.create({
     color: Colors.text,
     backgroundColor: '#ffffff',
     fontWeight: '600',
+    textAlign: 'right',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,

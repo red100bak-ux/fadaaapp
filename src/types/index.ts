@@ -1,7 +1,12 @@
-export type UserRole = 'super_admin' | 'admin' | 'staff' | 'view';
+export type UserRole = 'super_admin' | 'admin' | 'staff' | 'view' | 'demo';
 
 export interface UserPermissions {
-  canEdit?: boolean;
+  canEditStock?:      boolean;
+  canEditCredit?:     boolean;
+  canEditSuppliers?:  boolean;
+  canEditRepair?:     boolean;
+  canViewStaff?:      boolean;
+  canViewSuppliers?:  boolean;
 }
 
 export interface AppUser {
@@ -11,6 +16,9 @@ export interface AppUser {
   isSuperAdmin?: boolean;
   color?: string;
   permissions?: UserPermissions;
+  online?: boolean;
+  lastSeen?: string;
+  allowedAdminButtons?: string[];
 }
 
 export interface StockItem {
@@ -21,9 +29,12 @@ export interface StockItem {
   qty: number;
   supplier?: string;
   addedBy?: string;
+  editedBy?: string;
   img?: string;
   pendingDeletion?: boolean;
   deletionRequestedBy?: string;
+  soldAt?: string;
+  soldBy?: string;
 }
 
 export interface CreditLog {
@@ -53,6 +64,12 @@ export interface SaleRecord {
   monthKey: string;
   yearKey: string;
   seller: string;
+  addedBy?: string;
+  editedBy?: string;
+  returnReason?: string;
+  deliveredAt?: string;
+  deliveredTo?: string;
+  deliveredBy?: string;
 }
 
 export interface SupplierTransaction {
@@ -82,12 +99,16 @@ export interface SupplierCredit {
   phone?: string;
   notes?: string;
   logs?: CreditLog[];
+  pendingDeletion?: boolean;
+  deletionRequestedBy?: string;
 }
 
 export interface Employee {
   name: string;
   salary: number;
   payday?: number;
+  pendingDeletion?: boolean;
+  deletionRequestedBy?: string;
 }
 
 export interface ExpenseItem {
@@ -110,7 +131,7 @@ export interface Folder {
   colorClass?: string;
 }
 
-export type ActivityType = 'sell' | 'add_stock' | 'credit_add' | 'credit_pay' | 'delete_req' | 'expense' | 'salary' | 'supplier_add' | 'supplier_pay' | 'other';
+export type ActivityType = 'sell' | 'return' | 'add_stock' | 'credit_add' | 'credit_pay' | 'delete_req' | 'expense' | 'salary' | 'supplier_add' | 'supplier_pay' | 'other';
 
 export interface ActivityLog {
   id: string;
@@ -121,6 +142,56 @@ export interface ActivityLog {
   by: string;
   read: boolean;
 }
+
+export interface Reminder {
+  id: string;
+  title: string;
+  datetime: string;
+  done: boolean;
+  notifId?: string;
+  read?: boolean;
+  note?: string;
+}
+
+export interface Note {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface ArchiveSale {
+  id: string;
+  bc: string;
+  name: string;
+  sell: number;
+  buy: number;
+  soldAt: string;
+  soldBy?: string;
+  cat: string;
+  qtyBefore: number;
+}
+
+export interface PrivateExpense {
+  id: string;
+  amount: number;
+  note: string;
+  cat?: string;
+  date: string;
+}
+
+export interface Secret {
+  id: string;
+  label: string;
+  value: string;
+  note?: string;
+  createdAt: string;
+}
+
+export type AdminButtonType =
+  | 'add_stock' | 'staff' | 'report' | 'suppliers'
+  | 'cloud' | 'pending' | 'users' | 'scan_info'
+  | 'calc' | 'reminder' | 'note';
 
 export interface AppData {
   stock: Record<string, StockItem>;
@@ -139,6 +210,20 @@ export interface AppData {
   staffMonths?: string[];
   cloudBackups?: Array<{ ts: string; label: string }>;
   activityLog?: ActivityLog[];
+  adminButtons?: AdminButtonType[];
+  reminders?: Reminder[];
+  notes?: Note[];
+  privateExpenses?: PrivateExpense[];
+  secrets?: Secret[];
+  archiveSales?: ArchiveSale[];
+  salesMonths?: string[]; // index of months that have data in monthly docs
+}
+
+// Stored in v97_s_YYYYMM monthly documents
+export interface MonthlyDoc {
+  sales: SaleRecord[];
+  archive: ArchiveSale[];
+  log: ActivityLog[];
 }
 
 export interface AuthState {

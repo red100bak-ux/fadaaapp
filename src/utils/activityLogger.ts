@@ -11,13 +11,16 @@ export function logActivity(
   by: string,
   amount?: number
 ): void {
+  // fallback to phone if name is empty
+  const { auth: currentAuth } = useAppStore.getState();
+  const resolvedBy = by || currentAuth?.name || currentAuth?.phone || '';
   const entry: ActivityLog = {
     id: generateId(),
     type,
     msg,
     amount,
     ts: new Date().toISOString(),
-    by,
+    by: resolvedBy,
     read: false,
   };
 
@@ -47,6 +50,7 @@ export function markAllRead(): void {
 export function getActivityColor(type: ActivityType): string {
   switch (type) {
     case 'sell':        return '#10b981'; // green
+    case 'return':      return '#f97316'; // orange
     case 'add_stock':   return '#3b82f6'; // blue
     case 'credit_add':  return '#f59e0b'; // yellow
     case 'credit_pay':  return '#10b981'; // green
@@ -62,6 +66,7 @@ export function getActivityColor(type: ActivityType): string {
 export function getActivityIcon(type: ActivityType): string {
   switch (type) {
     case 'sell':        return '💰';
+    case 'return':      return '🔄';
     case 'add_stock':   return '📦';
     case 'credit_add':  return '💳';
     case 'credit_pay':  return '💵';

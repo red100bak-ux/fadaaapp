@@ -42,6 +42,41 @@ async function cancelByType(type: string) {
   }
 }
 
+export async function scheduleReminderNotification(
+  reminderId: string,
+  title: string,
+  datetime: string,
+): Promise<string | null> {
+  try {
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('fadaa-reminders', {
+        name: 'تذكير',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 500, 250, 500],
+        sound: 'default',
+        enableVibrate: true,
+      });
+    }
+    const secsUntil = Math.floor((new Date(datetime).getTime() - Date.now()) / 1000);
+    if (secsUntil <= 0) return null;
+    const id = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: `📅 ${title}`,
+        body: 'حان وقت التذكير',
+        sound: true,
+        data: { type: 'reminder', reminderId },
+        ...(Platform.OS === 'android' && { channelId: 'fadaa-reminders' }),
+      },
+      trigger: { seconds: secsUntil },
+    });
+    return id;
+  } catch { return null; }
+}
+
+export async function cancelReminderNotification(notifId: string) {
+  try { await Notifications.cancelScheduledNotificationAsync(notifId); } catch {}
+}
+
 export async function scheduleCheckNotifications(
   supplierCredit: Record<string, SupplierCredit>,
 ) {

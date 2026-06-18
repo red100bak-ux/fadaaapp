@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, ScrollView, TouchableOpacity, TextInput,
   Modal, Alert, KeyboardAvoidingView, Platform,
@@ -8,11 +8,45 @@ import { router } from 'expo-router';
 import { useAppStore } from '../src/store/appStore';
 import { nowDate, formatMAD } from '../src/utils/helpers';
 import { usePermissions } from '../src/hooks/usePermissions';
+import AppHeader from '../src/components/AppHeader';
 import { logActivity } from '../src/utils/activityLogger';
 
 type View2 = 'list' | 'detail';
 type Sheet = 'none' | 'addSupplier' | 'editName' | 'transaction' | 'addCheck';
 type TxType = 'add' | 'sub';
+
+
+const pad = (n: number) => String(n).padStart(2, '0');
+
+function DateSpinner({ value, onChange }: { value: Date; onChange: (d: Date) => void }) {
+  function adj(field: string, delta: number) {
+    const d = new Date(value);
+    if (field === 'day')   d.setDate(d.getDate() + delta);
+    if (field === 'month') d.setMonth(d.getMonth() + delta);
+    if (field === 'year')  d.setFullYear(d.getFullYear() + delta);
+    onChange(d);
+  }
+  return (
+    <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'center', marginVertical: 6 }}>
+      {[
+        { label: 'سنة', val: String(value.getFullYear()), f: 'year' },
+        { label: 'شهر', val: String(value.getMonth() + 1).padStart(2, '0'), f: 'month' },
+        { label: 'يوم', val: pad(value.getDate()), f: 'day' },
+      ].map(({ label, val, f }) => (
+        <View key={f} style={{ alignItems: 'center', flex: 1, gap: 4 }}>
+          <TouchableOpacity onPress={() => adj(f, 1)} style={{ padding: 6 }}>
+            <Text style={{ fontSize: 18, color: '#5c67f2', fontWeight: '900' }}>▲</Text>
+          </TouchableOpacity>
+          <Text style={{ fontSize: 15, fontWeight: '900', color: '#1e293b' }}>{val}</Text>
+          <TouchableOpacity onPress={() => adj(f, -1)} style={{ padding: 6 }}>
+            <Text style={{ fontSize: 18, color: '#5c67f2', fontWeight: '900' }}>▼</Text>
+          </TouchableOpacity>
+          <Text style={{ fontSize: 10, color: '#94a3b8', fontWeight: '700' }}>{label}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
 
 export default function SuppliersScreen() {
   const { app, auth, updateApp } = useAppStore();
@@ -20,6 +54,7 @@ export default function SuppliersScreen() {
   const [selectedKey, setSelectedKey] = useState('');
   const [sheet, setSheet] = useState<Sheet>('none');
   const [newName, setNewName] = useState('');
+  const [newPhone, setNewPhone] = useState('');
   const [editName, setEditName] = useState('');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
@@ -31,10 +66,13 @@ export default function SuppliersScreen() {
   const [checkName, setCheckName] = useState('');
   const [checkNum, setCheckNum] = useState('');
   const [checkType, setCheckType] = useState<'chik' | 'kombiala'>('chik');
+  const [checkIssueDateObj, setCheckIssueDateObj] = useState(new Date());
+  const [checkDueDateObj, setCheckDueDateObj] = useState(new Date());
   const [showCheckForm, setShowCheckForm] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
 
   const perm = usePermissions();
-  const suppliers = Object.entries(app.supplierCredit ?? {});
+  const suppliers = Object.entries(app.supplierCredit ?? {}).filter(([, s]) => !s.pendingDeletion);
   const totalDebt = suppliers.reduce((s, [, v]) => s + (v.total ?? 0), 0);
   const selected = selectedKey ? app.supplierCredit?.[selectedKey] : null;
 
@@ -44,8 +82,8 @@ export default function SuppliersScreen() {
     const name = newName.trim();
     if (!name) { Alert.alert('', 'أدخل اسم المورد'); return; }
     const key = `sup_${Date.now()}`;
-    updateApp(prev => ({ ...prev, supplierCredit: { ...prev.supplierCredit, [key]: { name, total: 0, history: [], checks: [] } } }));
-    setNewName(''); setSheet('none');
+    updateApp(prev => ({ ...prev, supplierCredit: { ...prev.supplierCredit, [key]: { name, phone: newPhone.trim() || undefined, total: 0, history: [], checks: [] } } }));
+    setNewName(''); setNewPhone(''); setSheet('none'); setShowAddForm(false);
   }
 
   function saveEditName() {
@@ -55,9 +93,12 @@ export default function SuppliersScreen() {
   }
 
   function deleteSupplier(key: string, name: string) {
-    Alert.alert('حذف', `حذف "${name}" ؟`, [
+    Alert.alert('طلب حذف', `طلب حذف "${name}"؟\nسيُرسل للمدير للموافقة.`, [
       { text: 'إلغاء', style: 'cancel' },
-      { text: 'حذف', style: 'destructive', onPress: () => { updateApp(prev => { const sc = { ...prev.supplierCredit }; delete sc[key]; return { ...prev, supplierCredit: sc }; }); if (selectedKey === key) setView('list'); } },
+      { text: 'طلب الحذف', style: 'destructive', onPress: () => {
+        updateApp(prev => ({ ...prev, supplierCredit: { ...prev.supplierCredit, [key]: { ...prev.supplierCredit[key], pendingDeletion: true, deletionRequestedBy: auth?.name ?? '' } } }));
+        if (selectedKey === key) setView('list');
+      }},
     ]);
   }
 
@@ -74,9 +115,9 @@ export default function SuppliersScreen() {
       return { ...prev, supplierCredit: { ...sc, [selectedKey]: { ...sup, total: (sup.total ?? 0) + delta, history } } };
     });
     if (txType === 'add') {
-      logActivity('supplier_add', `📦 جاب سلعة من: ${supName} — ${val} DH`, auth?.name ?? '', val);
+      logActivity('supplier_add', `📦 جاب سلعة من: ${supName} — ${val} د`, auth?.name ?? '', val);
     } else {
-      logActivity('supplier_pay', `✅ تسديد لـ: ${supName} — ${val} DH`, auth?.name ?? '', val);
+      logActivity('supplier_pay', `✅ تسديد لـ: ${supName} — ${val} د`, auth?.name ?? '', val);
     }
     setAmount(''); setNote(''); setSheet('none');
   }
@@ -85,19 +126,20 @@ export default function SuppliersScreen() {
     if (!checkAmt) { Alert.alert('', 'أدخل مبلغ الشيك'); return; }
     if (!checkNum.trim()) { Alert.alert('', 'أدخل رقم الشيك'); return; }
     const val = parseFloat(checkAmt); if (!val) return;
-    const { date } = nowDate();
+    const fmtD = (d: Date) => `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()}`;
     const chk = {
       id: `chk_${Date.now()}`, amount: val,
-      issueDate: date, dueDate: checkDue.trim() || '',
+      issueDate: fmtD(checkIssueDateObj), dueDate: checkDueDateObj.toISOString(),
       name: checkName.trim(), num: checkNum.trim(),
-      type: checkType, note: checkNote.trim(), cashed: false, date,
+      type: checkType, note: checkNote.trim(), cashed: false, date: fmtD(checkIssueDateObj),
     };
     updateApp(prev => {
       const sc = { ...prev.supplierCredit };
       const sup = { ...sc[selectedKey] };
       return { ...prev, supplierCredit: { ...sc, [selectedKey]: { ...sup, checks: [...(sup.checks ?? []), chk] } } };
     });
-    setCheckAmt(''); setCheckDue(''); setCheckNote(''); setCheckName(''); setCheckNum('');
+    setCheckAmt(''); setCheckNote(''); setCheckName(''); setCheckNum('');
+    setCheckIssueDateObj(new Date()); setCheckDueDateObj(new Date());
     setShowCheckForm(false);
   }
 
@@ -115,10 +157,7 @@ export default function SuppliersScreen() {
   // ════════════════════════════════════════════════
   if (view === 'list') return (
     <SafeAreaView style={s.root} edges={['top']}>
-      <View style={s.header}>
-        <Text style={s.headerTitle}>كارني الموردين 📦●</Text>
-        <Text style={s.totalDebt}>مجموع الديون: {formatMAD(totalDebt)}</Text>
-      </View>
+      <AppHeader title="كارني الموردين" sub={`مجموع الديون: ${formatMAD(totalDebt)}`} subColor="#ef4444" onBack={() => router.back()} />
 
       <FlatList
         data={suppliers}
@@ -131,11 +170,23 @@ export default function SuppliersScreen() {
             </TouchableOpacity>
             {perm.canAddSupplier && (
             <View style={s.addCard}>
-              <TextInput style={s.addInput} placeholder="اسم المورد الجديد" value={newName} onChangeText={setNewName}
-                textAlign="right" placeholderTextColor="#94a3b8" returnKeyType="done" onSubmitEditing={addSupplier} />
-              <TouchableOpacity style={s.addBtn} onPress={addSupplier}>
-                <Text style={s.addBtnTxt}>+ إضافة مورد للكارني</Text>
+              {showAddForm && (
+                <>
+                  <TextInput style={s.addInput} placeholder="اسم المورد الجديد *" value={newName} onChangeText={setNewName}
+                    placeholderTextColor="#94a3b8" returnKeyType="next" autoFocus />
+                  <TextInput style={[s.addInput, { marginTop: 8 }]} placeholder="رقم الهاتف (اختياري)" value={newPhone} onChangeText={setNewPhone}
+                    placeholderTextColor="#94a3b8" keyboardType="phone-pad" returnKeyType="done" onSubmitEditing={addSupplier} />
+                </>
+              )}
+              <TouchableOpacity style={s.addBtn} onPress={showAddForm ? addSupplier : () => setShowAddForm(true)}>
+                <Text style={s.addBtnTxt}>{showAddForm ? '✓ حفظ المورد' : '+ إضافة مورد للكارني'}</Text>
               </TouchableOpacity>
+              {showAddForm && (
+                <TouchableOpacity style={[s.addBtn, { backgroundColor: '#94a3b8', marginTop: 6 }]}
+                  onPress={() => { setShowAddForm(false); setNewName(''); setNewPhone(''); }}>
+                  <Text style={s.addBtnTxt}>إلغاء</Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
           </>
@@ -145,21 +196,21 @@ export default function SuppliersScreen() {
           const debt = sup.total ?? 0;
           return (
             <TouchableOpacity style={s.supCard} onPress={() => openDetail(key)} activeOpacity={0.8}>
-              <View style={s.cardActions}>
-                {perm.canDeleteSupplier && (
-                  <TouchableOpacity style={s.delIcon} onPress={() => deleteSupplier(key, sup.name)}>
-                    <Text style={{ fontSize: 18 }}>🗑️</Text>
-                  </TouchableOpacity>
-                )}
-                {perm.canEditSupplier && (
-                  <TouchableOpacity style={s.editIcon} onPress={() => { setSelectedKey(key); setEditName(sup.name); setSheet('editName'); }}>
-                    <Text style={{ fontSize: 18 }}>✏️</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+              {/* RIGHT in RTL: supplier name/debt */}
               <View style={s.cardInfo}>
                 <Text style={s.supName}>{sup.name}</Text>
                 <Text style={[s.supDebt, { color: debt === 0 ? '#10b981' : '#ef4444' }]}>{formatMAD(debt)}</Text>
+              </View>
+              {/* LEFT in RTL: ✏️ top, 🗑️ below — column */}
+              <View style={s.cardActions}>
+                <TouchableOpacity style={s.editIcon} onPress={() => { setSelectedKey(key); setEditName(sup.name); setSheet('editName'); }}>
+                  <Text style={{ fontSize: 16 }}>✏️</Text>
+                </TouchableOpacity>
+                {perm.canDeleteSupplier && (
+                  <TouchableOpacity style={s.delIcon} onPress={() => deleteSupplier(key, sup.name)}>
+                    <Text style={{ fontSize: 16 }}>🗑️</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </TouchableOpacity>
           );
@@ -171,7 +222,7 @@ export default function SuppliersScreen() {
         <KeyboardAvoidingView style={s.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={s.sheetBox}>
             <Text style={s.sheetTitle}>✏️ تعديل اسم المورد</Text>
-            <TextInput style={s.inp} value={editName} onChangeText={setEditName} textAlign="right" autoFocus placeholderTextColor="#9ca3af" />
+            <TextInput style={s.inp} value={editName} onChangeText={setEditName} autoFocus placeholderTextColor="#9ca3af" />
             <View style={s.btns}>
               <TouchableOpacity style={s.cancelBtn} onPress={() => setSheet('none')}><Text style={s.cancelTxt}>إلغاء</Text></TouchableOpacity>
               <TouchableOpacity style={[s.confirmBtn, { backgroundColor: '#d97706' }]} onPress={saveEditName}><Text style={s.confirmTxt}>💾 حفظ</Text></TouchableOpacity>
@@ -192,12 +243,10 @@ export default function SuppliersScreen() {
 
   return (
     <SafeAreaView style={s.root} edges={['top']}>
-      {/* Header: supplier name */}
-      <View style={s.header}>
-        <Text style={s.headerTitle}>{selected?.name ?? ''}</Text>
-      </View>
+      <AppHeader title={selected?.name ?? ''} onBack={() => setView('list')} />
 
-      <ScrollView contentContainerStyle={s.scroll}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
         {/* Back button */}
         <TouchableOpacity style={s.backBtn} onPress={() => setView('list')}>
           <Text style={s.backTxt}>← رجوع للقائمة</Text>
@@ -247,7 +296,7 @@ export default function SuppliersScreen() {
         <View style={s.checksCard}>
           <View style={s.checksHeader}>
             {perm.canManageChecks && (
-              <TouchableOpacity style={s.addCheckBtn} onPress={() => { setCheckAmt(''); setCheckDue(''); setCheckNote(''); setCheckName(''); setCheckNum(''); setCheckType('chik'); setShowCheckForm(v => !v); }}>
+              <TouchableOpacity style={s.addCheckBtn} onPress={() => { setCheckAmt(''); setCheckNote(''); setCheckName(''); setCheckNum(''); setCheckType('chik'); setCheckIssueDateObj(new Date()); setCheckDueDateObj(new Date()); setShowCheckForm(v => !v); }}>
                 <Text style={s.addCheckTxt}>+ إضافة شيك</Text>
               </TouchableOpacity>
             )}
@@ -267,24 +316,20 @@ export default function SuppliersScreen() {
                 </TouchableOpacity>
               </View>
 
-              <TextInput style={s.checkInp} placeholder="الاسم على الشيك" value={checkName} onChangeText={setCheckName} textAlign="right" placeholderTextColor="#94a3b8" />
-              <TextInput style={s.checkInp} placeholder="رقم الشيك *" value={checkNum} onChangeText={setCheckNum} textAlign="right" placeholderTextColor="#94a3b8" keyboardType="numeric" />
+              <TextInput style={s.checkInp} placeholder="الاسم على الشيك" value={checkName} onChangeText={setCheckName} placeholderTextColor="#94a3b8" />
+              <TextInput style={s.checkInp} placeholder="رقم الشيك *" value={checkNum} onChangeText={setCheckNum} placeholderTextColor="#94a3b8" keyboardType="numeric" />
 
-              <Text style={s.checkFieldLabel}>تاريخ الشيك</Text>
-              <View style={s.checkDateBox}>
-                <Text style={{ color: '#94a3b8', fontSize: 13 }}>∨</Text>
-                <Text style={s.checkDateTxt}>{nowDate().date}</Text>
+              <Text style={s.checkFieldLabel}>📅 تاريخ الشيك</Text>
+              <View style={[s.checkDateBox, { paddingVertical: 4 }]}>
+                <DateSpinner value={checkIssueDateObj} onChange={setCheckIssueDateObj} />
               </View>
 
-              <Text style={s.checkFieldLabel}>تاريخ الصرف (Due Date) *</Text>
-              <View style={s.checkDateBox}>
-                <Text style={{ color: '#94a3b8', fontSize: 13 }}>∨</Text>
-                <TextInput style={{ flex: 1, textAlign: 'right', fontSize: 15, color: '#1e293b', fontWeight: '600' }}
-                  placeholder="dd/mm/yyyy" value={checkDue} onChangeText={setCheckDue}
-                  placeholderTextColor="#94a3b8" keyboardType="numeric" />
+              <Text style={s.checkFieldLabel}>⏰ تاريخ الصرف *</Text>
+              <View style={[s.checkDateBox, { paddingVertical: 4 }]}>
+                <DateSpinner value={checkDueDateObj} onChange={setCheckDueDateObj} />
               </View>
 
-              <TextInput style={s.checkInp} placeholder="المبلغ (DH) *" value={checkAmt} onChangeText={setCheckAmt} textAlign="right" placeholderTextColor="#94a3b8" keyboardType="numeric" />
+              <TextInput style={s.checkInp} placeholder="المبلغ (د) *" value={checkAmt} onChangeText={setCheckAmt} placeholderTextColor="#94a3b8" keyboardType="numeric" />
 
               <View style={s.checkBtns}>
                 <TouchableOpacity style={s.checkCancelBtn} onPress={() => setShowCheckForm(false)}>
@@ -321,6 +366,7 @@ export default function SuppliersScreen() {
 
         <View style={{ height: 80 }} />
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* TRANSACTION MODAL */}
       <Modal visible={sheet === 'transaction'} transparent animationType="slide" onRequestClose={() => setSheet('none')}>
@@ -329,8 +375,8 @@ export default function SuppliersScreen() {
             <Text style={s.sheetTitle}>
               {txType === 'add' ? '📦 جاب سلعة (+)' : '🧾 تسديد / رفد (-)'}
             </Text>
-            <TextInput style={s.inp} placeholder="المبلغ (DH) *" value={amount} onChangeText={setAmount} keyboardType="numeric" textAlign="center" autoFocus placeholderTextColor="#9ca3af" />
-            <TextInput style={[s.inp, { marginTop: 10 }]} placeholder="ملاحظة..." value={note} onChangeText={setNote} textAlign="right" placeholderTextColor="#9ca3af" />
+            <TextInput style={s.inp} placeholder="المبلغ (د) *" value={amount} onChangeText={setAmount} keyboardType="numeric" autoFocus placeholderTextColor="#9ca3af" />
+            <TextInput style={[s.inp, { marginTop: 10 }]} placeholder="ملاحظة..." value={note} onChangeText={setNote} placeholderTextColor="#9ca3af" />
             <View style={s.btns}>
               <TouchableOpacity style={s.cancelBtn} onPress={() => setSheet('none')}><Text style={s.cancelTxt}>إلغاء</Text></TouchableOpacity>
               <TouchableOpacity style={[s.confirmBtn, { backgroundColor: txType === 'add' ? '#10b981' : '#ef4444' }]} onPress={recordTxn}>
@@ -346,7 +392,7 @@ export default function SuppliersScreen() {
         <KeyboardAvoidingView style={s.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={s.sheetBox}>
             <Text style={s.sheetTitle}>✏️ تعديل اسم المورد</Text>
-            <TextInput style={s.inp} value={editName} onChangeText={setEditName} textAlign="right" autoFocus placeholderTextColor="#9ca3af" />
+            <TextInput style={s.inp} value={editName} onChangeText={setEditName} autoFocus placeholderTextColor="#9ca3af" />
             <View style={s.btns}>
               <TouchableOpacity style={s.cancelBtn} onPress={() => setSheet('none')}><Text style={s.cancelTxt}>إلغاء</Text></TouchableOpacity>
               <TouchableOpacity style={[s.confirmBtn, { backgroundColor: '#d97706' }]} onPress={saveEditName}><Text style={s.confirmTxt}>💾 حفظ</Text></TouchableOpacity>
@@ -360,7 +406,7 @@ export default function SuppliersScreen() {
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#f8fafc' },
+  root: { flex: 1, backgroundColor: 'transparent' },
   header: { backgroundColor: '#fff', paddingVertical: 16, paddingHorizontal: 20, alignItems: 'center', borderBottomLeftRadius: 28, borderBottomRightRadius: 28, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12, elevation: 4, marginBottom: 2 },
   headerTitle: { fontSize: 20, fontWeight: '900', color: '#1e293b', marginBottom: 2 },
   totalDebt: { fontSize: 15, fontWeight: '800', color: '#ef4444' },
@@ -377,16 +423,16 @@ const s = StyleSheet.create({
   addBtnTxt: { color: '#fff', fontWeight: '800', fontSize: 15 },
 
   supCard: {
-    backgroundColor: '#fff', borderRadius: 16, padding: 18, marginBottom: 12,
-    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fff', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 12,
+    flexDirection: 'row', alignItems: 'flex-start',
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
   },
-  cardInfo: { flex: 1, alignItems: 'flex-end' },
+  cardInfo: { flex: 1 },
   supName: { fontSize: 17, fontWeight: '800', color: '#1e293b', marginBottom: 4 },
-  supDebt: { fontSize: 18, fontWeight: '900' },
-  cardActions: { flexDirection: 'row', gap: 8, marginLeft: 8 },
-  delIcon: { width: 42, height: 42, borderRadius: 10, backgroundColor: '#fee2e2', alignItems: 'center', justifyContent: 'center' },
-  editIcon: { width: 42, height: 42, borderRadius: 10, backgroundColor: '#dbeafe', alignItems: 'center', justifyContent: 'center' },
+  supDebt: { fontSize: 18, fontWeight: '900', textAlign: 'right' },
+  cardActions: { flexDirection: 'column', gap: 6 },
+  delIcon: { width: 34, height: 34, borderRadius: 10, backgroundColor: '#fee2e2', alignItems: 'center', justifyContent: 'center' },
+  editIcon: { width: 34, height: 34, borderRadius: 10, backgroundColor: '#dbeafe', alignItems: 'center', justifyContent: 'center' },
 
   empty: { alignItems: 'center', paddingVertical: 60, gap: 10 },
   emptyTxt: { fontSize: 14, color: '#94a3b8', fontWeight: '700', textAlign: 'center', paddingVertical: 12 },
@@ -396,9 +442,9 @@ const s = StyleSheet.create({
   editYellowBtn: { alignSelf: 'flex-start', backgroundColor: '#d97706', paddingHorizontal: 22, paddingVertical: 12, borderRadius: 20 },
   editYellowTxt: { color: '#fff', fontWeight: '900', fontSize: 15 },
 
-  debtCard: { backgroundColor: '#eff6ff', borderRadius: 22, padding: 28, marginBottom: 16, alignItems: 'center', borderWidth: 1.5, borderColor: '#bfdbfe' },
-  debtLabel: { fontSize: 17, fontWeight: '800', color: '#1e3a8a', marginBottom: 10 },
-  debtAmt: { fontSize: 48, fontWeight: '900' },
+  debtCard: { backgroundColor: '#eff6ff', borderRadius: 16, padding: 14, marginBottom: 12, alignItems: 'center', borderWidth: 1, borderColor: '#bfdbfe' },
+  debtLabel: { fontSize: 14, fontWeight: '800', color: '#1e3a8a', marginBottom: 4 },
+  debtAmt: { fontSize: 34, fontWeight: '900' },
 
   actionRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
   actionRed: { flex: 1, backgroundColor: '#ef4444', paddingVertical: 20, borderRadius: 20, alignItems: 'center' },
@@ -428,7 +474,7 @@ const s = StyleSheet.create({
   checkToggleBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: '#f1f5f9', alignItems: 'center' },
   checkToggleBtnOn: { backgroundColor: '#5c67f2' },
   checkToggleTxt: { fontSize: 14, fontWeight: '800', color: '#64748b' },
-  checkInp: { backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 14, fontSize: 15, color: '#1e293b', fontWeight: '600', marginBottom: 10 },
+  checkInp: { backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 14, fontSize: 15, color: '#1e293b', fontWeight: '600', marginBottom: 10, textAlign: 'right' },
   checkFieldLabel: { fontSize: 13, color: '#64748b', fontWeight: '700', textAlign: 'right', marginBottom: 6 },
   checkDateBox: { backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   checkDateTxt: { fontSize: 15, fontWeight: '700', color: '#1e293b' },
@@ -441,7 +487,7 @@ const s = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.6)', justifyContent: 'flex-end' },
   sheetBox: { backgroundColor: '#fff', borderTopLeftRadius: 26, borderTopRightRadius: 26, padding: 24, paddingBottom: 44 },
   sheetTitle: { fontSize: 17, fontWeight: '900', color: '#1e293b', textAlign: 'right', marginBottom: 16 },
-  inp: { borderWidth: 1.5, borderColor: '#e2e8f0', borderRadius: 14, padding: 14, fontSize: 15, color: '#1e293b', backgroundColor: '#f8fafc', fontWeight: '600' },
+  inp: { borderWidth: 1.5, borderColor: '#e2e8f0', borderRadius: 14, padding: 14, fontSize: 15, color: '#1e293b', backgroundColor: '#f8fafc', fontWeight: '600', textAlign: 'right' },
   btns: { flexDirection: 'row', gap: 10, marginTop: 16 },
   cancelBtn: { flex: 1, padding: 14, borderRadius: 14, backgroundColor: '#f1f5f9', alignItems: 'center' },
   cancelTxt: { fontSize: 15, fontWeight: '700', color: '#94a3b8' },

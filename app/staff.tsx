@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+﻿import { useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
   Modal, Alert, KeyboardAvoidingView, Platform,
@@ -8,12 +8,21 @@ import { router } from 'expo-router';
 import { useAppStore } from '../src/store/appStore';
 import { nowDate, formatMAD } from '../src/utils/helpers';
 import { usePermissions } from '../src/hooks/usePermissions';
+import AppHeader from '../src/components/AppHeader';
 import { logActivity } from '../src/utils/activityLogger';
+
 
 const MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليوز','غشت','شتنبر','أكتوبر','نونبر','دجنبر'];
 
 type View2 = 'list' | 'detail';
-type Sheet = 'none' | 'addMonth' | 'empMgr' | 'addEmp' | 'editEmp' | 'empAction' | 'empLog' | 'addExp';
+type Sheet = 'none' | 'addMonth' | 'empMgr' | 'addEmp' | 'editEmp' | 'empAction' | 'empLog' | 'addExp' | 'addInc';
+type IncType = 'mabi3at' | 'islah' | 'other';
+
+const INC_TYPES = [
+  { key: 'mabi3at', label: '🛒 مبيعات', color: '#16a34a', bg: '#dcfce7' },
+  { key: 'islah',   label: '🛠️ إصلاح',  color: '#7c3aed', bg: '#ede9fe' },
+  { key: 'other',   label: '+ أخر',     color: '#64748b', bg: '#f8fafc' },
+];
 type EmpAction = 'daf3a' | 'ghiyab' | 'salfa';
 type ExpType = 'kra' | 'daw' | 'net' | 'other';
 
@@ -43,6 +52,7 @@ export default function StaffScreen() {
   const [activeEmpKey, setActiveEmpKey] = useState('');
   const [expType, setExpType] = useState<ExpType>('other');
   const [editingExpIdx, setEditingExpIdx] = useState<{ type: string; idx: number } | null>(null);
+  const [incType, setIncType] = useState<IncType>('other');
 
   // Employee form
   const [empName, setEmpName] = useState('');
@@ -78,9 +88,12 @@ export default function StaffScreen() {
   }
 
   function getIncome(mk: string) {
-    return (app.todaySales ?? [])
+    const salesInc = (app.todaySales ?? [])
       .filter((s: any) => s.monthKey === mk && !s.name?.startsWith('📦') && !s.name?.startsWith('🗑️'))
       .reduce((s: number, r: any) => s + (r.sell || 0), 0);
+    const manualInc = Object.values(app.monthlyIncome?.[mk] ?? {})
+      .reduce((s: number, v: any) => s + (typeof v === 'number' ? v : 0), 0);
+    return salesInc + manualInc;
   }
 
   function empPaid(mk: string, empName: string) {
@@ -89,7 +102,7 @@ export default function StaffScreen() {
       .reduce((s: number, e: any) => s + (e.amount || 0), 0);
   }
 
-  const employees = Object.entries(app.employees ?? {});
+  const employees = Object.entries(app.employees ?? {}).filter(([, e]) => !e.pendingDeletion);
 
   // ─── EMPLOYEE ACTIONS ───
   function addEmployee() {
@@ -106,9 +119,9 @@ export default function StaffScreen() {
   }
 
   function deleteEmployee(key: string, name: string) {
-    Alert.alert('حذف', `حذف "${name}" ؟`, [
+    Alert.alert('طلب حذف', `طلب حذف "${name}"؟\nسيُرسل للمدير للموافقة.`, [
       { text: 'إلغاء', style: 'cancel' },
-      { text: 'حذف', style: 'destructive', onPress: () => updateApp(prev => { const emps = { ...prev.employees }; delete emps[key]; return { ...prev, employees: emps }; }) },
+      { text: 'طلب الحذف', style: 'destructive', onPress: () => updateApp(prev => ({ ...prev, employees: { ...prev.employees, [key]: { ...prev.employees[key], pendingDeletion: true, deletionRequestedBy: auth?.name ?? '' } } })) },
     ]);
   }
 
@@ -123,7 +136,21 @@ export default function StaffScreen() {
       const k = `👤 ${emp.name}`;
       return { ...prev, monthlyExpenses: { ...prev.monthlyExpenses, [activeMK]: { ...mExps, [k]: [...(mExps[k] ?? []), item] } } };
     });
-    logActivity('salary', `${label} لـ ${emp.name} — ${val} DH`, auth?.name ?? '', val);
+    logActivity('salary', `${label} لـ ${emp.name} — ${val} د`, auth?.name ?? '', val);
+    setAmount(''); setNote(''); setSheet('none');
+  }
+
+  // ─── INCOME ACTIONS ───
+  function addIncome() {
+    if (!amount) { Alert.alert('', 'أدخل المبلغ'); return; }
+    const val = parseFloat(amount); if (!val) return;
+    const cfg = INC_TYPES.find(t => t.key === incType) ?? INC_TYPES[2];
+    updateApp(prev => {
+      const mInc = prev.monthlyIncome?.[activeMK] ?? {};
+      const prev_val = typeof mInc[cfg.label] === 'number' ? mInc[cfg.label] : 0;
+      return { ...prev, monthlyIncome: { ...prev.monthlyIncome, [activeMK]: { ...mInc, [cfg.label]: prev_val + val } } };
+    });
+    logActivity('expense', `💰 دخل يدوي: ${cfg.label} — ${val} د`, auth?.name ?? '', val);
     setAmount(''); setNote(''); setSheet('none');
   }
 
@@ -146,7 +173,7 @@ export default function StaffScreen() {
         const mExps = prev.monthlyExpenses?.[activeMK] ?? {};
         return { ...prev, monthlyExpenses: { ...prev.monthlyExpenses, [activeMK]: { ...mExps, [cfg.label]: [...(mExps[cfg.label] ?? []), item] } } };
       });
-      logActivity('expense', `💸 مصروف: ${cfg.label} — ${val} DH`, auth?.name ?? '', val);
+      logActivity('expense', `💸 مصروف: ${cfg.label} — ${val} د`, auth?.name ?? '', val);
     }
     setAmount(''); setNote(''); setSheet('none');
   }
@@ -177,10 +204,7 @@ export default function StaffScreen() {
   // ===================== RENDER =====================
   return (
     <SafeAreaView style={s.root}>
-      {/* Header */}
-      <View style={s.header}>
-        <Text style={s.headerTitle}>الخدام والمصاريف 👷●</Text>
-      </View>
+      <AppHeader title="الخدام والمصاريف 👷" onBack={() => router.back()} />
 
       {/* Nav */}
       <View style={s.navRow}>
@@ -234,7 +258,7 @@ export default function StaffScreen() {
             return (
               <TouchableOpacity key={mk} style={[s.monthCard, { borderRightColor: isNeg ? '#ef4444' : '#10b981' }]}
                 onPress={() => { setActiveMK(mk); setView('detail'); }}>
-                <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                <View style={{ flex: 1 }}>
                   <Text style={s.monthCardDate}>
                     {mkLabel(mk)} {mk === currentMK ? `📅${currentDay}` : ''}
                   </Text>
@@ -273,16 +297,19 @@ export default function StaffScreen() {
             <View style={s.section}>
               <Text style={[s.secTitle, { color: '#16a34a' }]}>الدخل 💰</Text>
               <View style={s.quickRow}>
-                {[
-                  { label: '🛒 مبيعات', color: '#16a34a', bg: '#dcfce7' },
-                  { label: '🛠️ إصلاح',  color: '#7c3aed', bg: '#ede9fe' },
-                  { label: '+ أخر',     color: '#64748b', bg: '#f8fafc' },
-                ].map(b => (
-                  <TouchableOpacity key={b.label} style={[s.qBtn, { backgroundColor: b.bg }]}>
+                {INC_TYPES.map(b => (
+                  <TouchableOpacity key={b.key} style={[s.qBtn, { backgroundColor: b.bg }]}
+                    onPress={() => { setIncType(b.key as IncType); setAmount(''); setNote(''); setSheet('addInc'); }}>
                     <Text style={[s.qBtnTxt, { color: b.color }]}>{b.label}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
+              {Object.entries(app.monthlyIncome?.[activeMK] ?? {}).map(([type, val]) => (
+                <View key={type} style={s.incRow}>
+                  <Text style={s.incVal}>+{formatMAD(val as number)}</Text>
+                  <Text style={s.incLabel}>{type}</Text>
+                </View>
+              ))}
               {inc === 0 ? <Text style={s.emptyInline}>ما كاين حتى دخل</Text>
                 : <View style={s.incRow}><Text style={s.incLabel}>🛒 المبيعات</Text><Text style={s.incVal}>{formatMAD(inc)}</Text></View>}
               <TotalRow label="مجموع الدخل:" val={formatMAD(inc)} color="#16a34a" />
@@ -307,7 +334,7 @@ export default function StaffScreen() {
                     <View style={{ flex: 1 }}>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                         <Text style={s.expAmt}>{formatMAD(item.amount)}</Text>
-                        <Text style={s.expType}>{type} 📌</Text>
+                        <Text style={s.expType}>{(item.type && item.type !== 'items') ? item.type : (type !== 'items' ? type : '📋 مصروف')} 📌</Text>
                       </View>
                       {item.note ? <Text style={s.expNote}>{item.note}</Text> : null}
                     </View>
@@ -337,7 +364,7 @@ export default function StaffScreen() {
                 return (
                   <View key={key} style={s.empCard}>
                     <View style={s.empTop}>
-                      <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                      <View style={{ flex: 1 }}>
                         <Text style={s.empName}>{emp.name}</Text>
                         <Text style={s.empSal}>{formatMAD(emp.salary)}/شهر ⚙️</Text>
                       </View>
@@ -429,9 +456,9 @@ export default function StaffScreen() {
         <KeyboardAvoidingView style={s.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={s.sheetBox}>
             <Text style={s.sheetTitle}>{sheet === 'editEmp' ? '✏️ تعديل' : '👷 خادم جديد'}</Text>
-            <TextInput style={s.inp} placeholder="الاسم *" value={empName} onChangeText={setEmpName} textAlign="right" autoFocus placeholderTextColor="#9ca3af" />
-            <TextInput style={[s.inp, { marginTop: 10 }]} placeholder="الراتب (DH) *" value={empSalary} onChangeText={setEmpSalary} keyboardType="numeric" textAlign="center" placeholderTextColor="#9ca3af" />
-            <TextInput style={[s.inp, { marginTop: 10 }]} placeholder="يوم الأداء (مثلاً 30)" value={empPayday} onChangeText={setEmpPayday} keyboardType="numeric" textAlign="center" placeholderTextColor="#9ca3af" />
+            <TextInput style={s.inp} placeholder="الاسم *" value={empName} onChangeText={setEmpName} autoFocus placeholderTextColor="#9ca3af" />
+            <TextInput style={[s.inp, { marginTop: 10 }]} placeholder="الراتب (د) *" value={empSalary} onChangeText={setEmpSalary} keyboardType="numeric" placeholderTextColor="#9ca3af" />
+            <TextInput style={[s.inp, { marginTop: 10 }]} placeholder="يوم الأداء (مثلاً 30)" value={empPayday} onChangeText={setEmpPayday} keyboardType="numeric" placeholderTextColor="#9ca3af" />
             <View style={s.btnsRow}>
               <TouchableOpacity style={s.cancelBtn} onPress={() => setSheet('empMgr')}><Text style={s.cancelTxt}>إلغاء</Text></TouchableOpacity>
               <TouchableOpacity style={[s.confirmBtnIndigo, { flex: 2 }]} onPress={sheet === 'editEmp' ? editEmployee : addEmployee}><Text style={s.confirmTxt}>💾 حفظ</Text></TouchableOpacity>
@@ -448,8 +475,8 @@ export default function StaffScreen() {
               {empAction === 'daf3a' ? '💰 دفعة' : empAction === 'ghiyab' ? '🚫 غياب' : '✅ سلفة'}
               {activeEmp ? ` — ${activeEmp.name}` : ''}
             </Text>
-            <TextInput style={s.inp} placeholder="المبلغ (DH) *" value={amount} onChangeText={setAmount} keyboardType="numeric" textAlign="center" autoFocus placeholderTextColor="#9ca3af" />
-            <TextInput style={[s.inp, { marginTop: 10 }]} placeholder="ملاحظة..." value={note} onChangeText={setNote} textAlign="right" placeholderTextColor="#9ca3af" />
+            <TextInput style={s.inp} placeholder="المبلغ (د) *" value={amount} onChangeText={setAmount} keyboardType="numeric" autoFocus placeholderTextColor="#9ca3af" />
+            <TextInput style={[s.inp, { marginTop: 10 }]} placeholder="ملاحظة..." value={note} onChangeText={setNote} placeholderTextColor="#9ca3af" />
             <View style={s.btnsRow}>
               <TouchableOpacity style={s.cancelBtn} onPress={() => setSheet('none')}><Text style={s.cancelTxt}>إلغاء</Text></TouchableOpacity>
               <TouchableOpacity style={[s.confirmBtnIndigo, { flex: 2, backgroundColor: empAction === 'daf3a' ? '#10b981' : empAction === 'ghiyab' ? '#ef4444' : '#d97706' }]} onPress={recordEmpAction}>
@@ -485,6 +512,31 @@ export default function StaffScreen() {
         </View>
       </Modal>
 
+      {/* ─── ADD INCOME ─── */}
+      <Modal visible={sheet === 'addInc'} transparent animationType="slide" onRequestClose={() => setSheet('none')}>
+        <KeyboardAvoidingView style={s.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={s.sheetBox}>
+            <Text style={s.sheetTitle}>+ دخل جديد</Text>
+            <View style={[s.quickRow, { marginBottom: 12 }]}>
+              {INC_TYPES.map(t => (
+                <TouchableOpacity key={t.key} style={[s.qBtn, { backgroundColor: incType === t.key ? t.color : t.bg }]}
+                  onPress={() => setIncType(t.key as IncType)}>
+                  <Text style={[s.qBtnTxt, { color: incType === t.key ? '#fff' : t.color }]}>{t.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TextInput style={s.inp} placeholder="المبلغ (د) *" value={amount} onChangeText={setAmount} keyboardType="numeric" autoFocus placeholderTextColor="#9ca3af" />
+            <TextInput style={[s.inp, { marginTop: 10 }]} placeholder="ملاحظة (اختياري)..." value={note} onChangeText={setNote} placeholderTextColor="#9ca3af" />
+            <View style={s.btnsRow}>
+              <TouchableOpacity style={s.cancelBtn} onPress={() => setSheet('none')}><Text style={s.cancelTxt}>إلغاء</Text></TouchableOpacity>
+              <TouchableOpacity style={[s.confirmBtnIndigo, { flex: 2, backgroundColor: '#16a34a' }]} onPress={addIncome}>
+                <Text style={s.confirmTxt}>💾 حفظ</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       {/* ─── ADD EXPENSE ─── */}
       <Modal visible={sheet === 'addExp'} transparent animationType="slide" onRequestClose={() => { setSheet('none'); setEditingExpIdx(null); }}>
         <KeyboardAvoidingView style={s.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -500,8 +552,8 @@ export default function StaffScreen() {
                 ))}
               </View>
             )}
-            <TextInput style={s.inp} placeholder="المبلغ (DH) *" value={amount} onChangeText={setAmount} keyboardType="numeric" textAlign="center" autoFocus placeholderTextColor="#9ca3af" />
-            <TextInput style={[s.inp, { marginTop: 10 }]} placeholder="ملاحظة (اختياري)..." value={note} onChangeText={setNote} textAlign="right" placeholderTextColor="#9ca3af" />
+            <TextInput style={s.inp} placeholder="المبلغ (د) *" value={amount} onChangeText={setAmount} keyboardType="numeric" autoFocus placeholderTextColor="#9ca3af" />
+            <TextInput style={[s.inp, { marginTop: 10 }]} placeholder="ملاحظة (اختياري)..." value={note} onChangeText={setNote} placeholderTextColor="#9ca3af" />
             <View style={s.btnsRow}>
               <TouchableOpacity style={s.cancelBtn} onPress={() => { setSheet('none'); setEditingExpIdx(null); }}><Text style={s.cancelTxt}>إلغاء</Text></TouchableOpacity>
               <TouchableOpacity style={[s.confirmBtnIndigo, { flex: 2, backgroundColor: EXP_TYPES.find(t => t.key === expType)?.color ?? '#6b7280' }]} onPress={addExpense}>
@@ -535,7 +587,7 @@ function SumRow({ icon, label, val, color, big }: { icon: string; label: string;
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#f8fafc' },
+  root: { flex: 1, backgroundColor: 'transparent' },
   header: { backgroundColor: '#fff', paddingVertical: 14, alignItems: 'center', borderBottomLeftRadius: 28, borderBottomRightRadius: 28, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12, elevation: 4, marginBottom: 4 },
   headerTitle: { fontSize: 18, fontWeight: '900', color: '#1e293b' },
   navRow: { flexDirection: 'row', gap: 10, padding: 12, backgroundColor: '#f8fafc' },
@@ -611,7 +663,7 @@ const s = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.6)', justifyContent: 'flex-end' },
   sheetBox: { backgroundColor: '#ffffff', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 44 },
   sheetTitle: { fontSize: 17, fontWeight: '900', color: '#1e293b', textAlign: 'right', marginBottom: 16 },
-  inp: { borderWidth: 1.5, borderColor: '#e2e8f0', borderRadius: 14, padding: 14, fontSize: 15, color: '#1e293b', backgroundColor: '#f8fafc', fontWeight: '600' },
+  inp: { borderWidth: 1.5, borderColor: '#e2e8f0', borderRadius: 14, padding: 14, fontSize: 15, color: '#1e293b', backgroundColor: '#f8fafc', fontWeight: '600', textAlign: 'right' },
   btnsRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
   cancelBtn: { flex: 1, padding: 14, borderRadius: 14, backgroundColor: '#f8fafc', borderWidth: 1.5, borderColor: '#e2e8f0', alignItems: 'center' },
   cancelTxt: { fontSize: 15, fontWeight: '700', color: '#64748b' },
