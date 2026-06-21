@@ -71,6 +71,7 @@ export default function FolderDetailScreen() {
   const [newSupplierName, setNewSupplierName] = useState('');
   const [appAlert, setAppAlert] = useState<{ icon?: string; title: string; message?: string; buttons: AppAlertButton[] } | null>(null);
   const [returnReasonEntry, setReturnReasonEntry] = useState<{ entry: any } | null>(null);
+  const [pendingLinked, setPendingLinked] = useState<{ bc: string; qty: number }[]>([]);
   const formScrollRef = useRef<ScrollView>(null);
   const [freeCropMode, setFreeCropMode] = useState(false);
   const [cropBox, setCropBox] = useState({ x: 16, y: 16, w: 300, h: 340 });
@@ -199,6 +200,7 @@ export default function FolderDetailScreen() {
     setForm({ ...EMPTY_FORM, cat: folder!.name });
     setNewImg(null);
     setRemoveImg(false);
+    setPendingLinked([]);
     setAddModal(true);
   }
 
@@ -287,6 +289,19 @@ export default function FolderDetailScreen() {
         },
       }));
       setAppAlert({ icon: '✅', title: 'تم الربط', message: `${data} مربوط — ${linkedQty} قطعة`, buttons: [{ label: 'حسناً', onPress: () => setAppAlert(null), primary: true }] });
+      return;
+    }
+
+    // وضع الإضافة مع باركود رئيسي موجود → ربط
+    if (!editBarcode && form.barcode && data !== form.barcode) {
+      const alreadyPending = pendingLinked.find(l => l.bc === data);
+      if (alreadyPending) {
+        setAppAlert({ icon: 'ℹ️', title: 'مربوط بالفعل', message: `${data} مضاف`, buttons: [{ label: 'حسناً', onPress: () => setAppAlert(null), primary: true }] });
+        return;
+      }
+      const linkedQty = app.stock[data]?.qty ?? 1;
+      setPendingLinked(p => [...p, { bc: data, qty: linkedQty }]);
+      setAppAlert({ icon: '✅', title: 'تم الربط', message: `${data} مضاف — ${linkedQty} قطعة`, buttons: [{ label: 'حسناً', onPress: () => setAppAlert(null), primary: true }] });
       return;
     }
 
@@ -385,6 +400,7 @@ export default function FolderDetailScreen() {
       qty: isEdit ? Math.max(0, (originalItem?.qty ?? 0) + (parseInt(form.qty) || 0)) : Math.max(1, parseInt(form.qty) || 1),
       supplier: form.supplier.trim() || undefined,
       addedBy: isEdit ? (originalItem?.addedBy ?? auth?.name) : auth?.name,
+      linkedBarcodes: !isEdit && pendingLinked.length > 0 ? pendingLinked : (isEdit ? originalItem?.linkedBarcodes : undefined),
       editedBy: isEdit ? auth?.name : undefined,
       img: imgUrl,
     };
@@ -1186,41 +1202,34 @@ export default function FolderDetailScreen() {
                 returnKeyType="done"
               />
 
-              {/* باركودات مرتبطة — فقط عند التعديل */}
-              {editBarcode && (
-                <View style={{ marginTop: 4 }}>
-                  <Text style={[styles.fieldLabel, { fontSize: 11, marginBottom: 4 }]}>🔗 باركودات مرتبطة</Text>
-                  {(app.stock[editBarcode]?.linkedBarcodes ?? []).map((lb, i) => (
-                    <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                      <TouchableOpacity
-                        style={{ backgroundColor: '#fee2e2', padding: 6, borderRadius: 8 }}
-                        onPress={() => {
-                          updateApp(prev => ({
-                            ...prev,
-                            stock: {
-                              ...prev.stock,
-                              [editBarcode]: {
-                                ...prev.stock[editBarcode],
-                                linkedBarcodes: (prev.stock[editBarcode].linkedBarcodes ?? []).filter((_, j) => j !== i),
-                              },
-                            },
-                          }));
-                        }}
-                      >
-                        <Text style={{ color: '#dc2626', fontWeight: '900' }}>✕</Text>
-                      </TouchableOpacity>
-                      <Text style={{ flex: 1, fontSize: 13, color: '#1e293b' }}>{lb.bc}</Text>
-                      <Text style={{ fontSize: 13, color: '#5c67f2', fontWeight: '700' }}>{lb.qty} قطعة</Text>
-                    </View>
-                  ))}
-                  <TouchableOpacity
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: '#eff6ff', borderRadius: 10, borderWidth: 1, borderColor: '#93c5fd' }}
-                    onPress={() => setShowBcScanner(true)}
-                  >
-                    <Text style={{ fontSize: 13, fontWeight: '800', color: '#3b82f6' }}>📷 سكان باركود جديد للربط</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
+              {/* باركودات مرتبطة — إضافة وتعديل */}
+              <View style={{ marginTop: 4 }}>
+                <Text style={[styles.fieldLabel, { fontSize: 11, marginBottom: 4 }]}>🔗 باركودات مرتبطة</Text>
+                {(editBarcode ? (app.stock[editBarcode]?.linkedBarcodes ?? []) : pendingLinked).map((lb, i) => (
+                  <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <TouchableOpacity
+                      style={{ backgroundColor: '#fee2e2', padding: 6, borderRadius: 8 }}
+                      onPress={() => {
+                        if (editBarcode) {
+                          updateApp(prev => ({ ...prev, stock: { ...prev.stock, [editBarcode]: { ...prev.stock[editBarcode], linkedBarcodes: (prev.stock[editBarcode].linkedBarcodes ?? []).filter((_, j) => j !== i) } } }));
+                        } else {
+                          setPendingLinked(p => p.filter((_, j) => j !== i));
+                        }
+                      }}
+                    >
+                      <Text style={{ color: '#dc2626', fontWeight: '900' }}>✕</Text>
+                    </TouchableOpacity>
+                    <Text style={{ flex: 1, fontSize: 13, color: '#1e293b' }}>{lb.bc}</Text>
+                    <Text style={{ fontSize: 13, color: '#5c67f2', fontWeight: '700' }}>{lb.qty} قطعة</Text>
+                  </View>
+                ))}
+                <TouchableOpacity
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: '#eff6ff', borderRadius: 10, borderWidth: 1, borderColor: '#93c5fd' }}
+                  onPress={() => { bcScannedRef.current = false; setShowBcScanner(true); }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: '#3b82f6' }}>📷 سكان باركود للربط</Text>
+                </TouchableOpacity>
+              </View>
 
               {/* المورد */}
               <View style={{ flexDirection: 'column-reverse' }}>
