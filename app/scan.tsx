@@ -277,17 +277,34 @@ export default function ScanScreen() {
 
     if (scanMode === 'add_stock') {
       if (item) {
-        // المنتج موجود — +1 تلقائياً
-        const newQty = item.qty + 1;
-        updateApp((prev) => ({
-          ...prev,
-          stock: { ...prev.stock, [mainBc]: { ...item, qty: newQty } },
-        }));
-        logActivity('add_stock', `📦 زاد: ${item.name} (+1 — باقي: ${newQty})`, auth?.name ?? '');
-        showAlert('✅', `+1 — ${item.name}`, `الكمية الجديدة: ${newQty}`, [
-          { label: 'عاود سكان', onPress: () => { setAlertModal(null); setScanned(false); }, primary: true },
-          { label: 'تعديل', onPress: () => { setAlertModal(null); setFound({ bc: mainBc, item: { ...item, qty: newQty } }); } },
-        ]);
+        if (mainBc !== bc) {
+          // باركود مرتبط — +1 لـ qty ديالو خصيصاً
+          const newLinked = (item.linkedBarcodes ?? []).map(l =>
+            l.bc === bc ? { ...l, qty: l.qty + 1 } : l
+          );
+          const newQty = newLinked.find(l => l.bc === bc)?.qty ?? 1;
+          updateApp((prev) => ({
+            ...prev,
+            stock: { ...prev.stock, [mainBc]: { ...item, linkedBarcodes: newLinked } },
+          }));
+          logActivity('add_stock', `📦 زاد: ${item.name} كود ${bc} (+1 — باقي: ${newQty})`, auth?.name ?? '');
+          showAlert('✅', `+1 — ${item.name}`, `الكود ${bc}: ${newQty} قطعة`, [
+            { label: 'عاود سكان', onPress: () => { setAlertModal(null); setScanned(false); }, primary: true },
+            { label: 'تعديل', onPress: () => { setAlertModal(null); setFound({ bc: mainBc, item }); } },
+          ]);
+        } else {
+          // باركود رئيسي — +1 عادي
+          const newQty = item.qty + 1;
+          updateApp((prev) => ({
+            ...prev,
+            stock: { ...prev.stock, [mainBc]: { ...item, qty: newQty } },
+          }));
+          logActivity('add_stock', `📦 زاد: ${item.name} (+1 — باقي: ${newQty})`, auth?.name ?? '');
+          showAlert('✅', `+1 — ${item.name}`, `الكمية الجديدة: ${newQty}`, [
+            { label: 'عاود سكان', onPress: () => { setAlertModal(null); setScanned(false); }, primary: true },
+            { label: 'تعديل', onPress: () => { setAlertModal(null); setFound({ bc: mainBc, item: { ...item, qty: newQty } }); } },
+          ]);
+        }
       } else {
         setManualCode(bc);
         const defaultCat = app.folders?.find((fl) => fl.active)?.name || '';
