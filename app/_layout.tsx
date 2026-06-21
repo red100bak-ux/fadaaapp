@@ -106,15 +106,12 @@ export default function RootLayout() {
         <Text style={{ fontSize: 20, fontWeight: '900', textAlign: 'center', color: '#1e293b', marginBottom: 8 }}>
           أغلق التطبيق وافتحه من جديد
         </Text>
-        <Text style={{ fontSize: 14, textAlign: 'center', color: '#64748b', marginBottom: 32 }}>
+        <Text style={{ fontSize: 14, textAlign: 'center', color: '#64748b', marginBottom: 8 }}>
           مرة وحدة فقط — باش يتطبق الاتجاه الصحيح
         </Text>
-        <TouchableOpacity
-          style={{ backgroundColor: '#5c67f2', paddingHorizontal: 32, paddingVertical: 14, borderRadius: 16 }}
-          onPress={() => BackHandler.exitApp()}
-        >
-          <Text style={{ color: '#fff', fontSize: 16, fontWeight: '900' }}>إغلاق التطبيق</Text>
-        </TouchableOpacity>
+        <Text style={{ fontSize: 13, textAlign: 'center', color: '#94a3b8' }}>
+          ↓ اضغط على زر الرجوع أو أغلق من الأسفل ↓
+        </Text>
       </View>
     );
   }
