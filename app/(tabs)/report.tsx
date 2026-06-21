@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useAppStore } from '../../src/store/appStore';
-import { formatMAD, nowDate, getFolderColor } from '../../src/utils/helpers';
+import { formatMAD, nowDate, getFolderColor, normalizeMonthKey } from '../../src/utils/helpers';
 import { usePermissions } from '../../src/hooks/usePermissions';
 import AppHeader from '../../src/components/AppHeader';
 
@@ -33,7 +33,7 @@ function getWeekStart(d: Date): Date {
   return start;
 }
 
-const INTERNAL = ['📦', '🗑️', '📌', '📒', '💰'];
+const INTERNAL = ['🗑️', '📌', '📒', '💰', '📦 أضاف:', '📦 زاد:', '📦 تصحيح:', '📦 ستوك:'];
 
 const AR_MONTHS = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليوز','غشت','شتنبر','أكتوبر','نونبر','دجنبر'];
 function formatMonthKey(mk: string): string {
@@ -99,7 +99,7 @@ export default function ReportScreen() {
       switch (filter) {
         case 'today': return s.dateString === today;
         case 'week':  return sDate >= weekStart && sDate <= todayDate;
-        case 'month': return s.monthKey === monthKey;
+        case 'month': return normalizeMonthKey(s.monthKey ?? '') === monthKey;
         case 'year':  return s.yearKey === yr || s.dateString?.endsWith(`/${yr}`);
         default: return true;
       }
@@ -529,7 +529,7 @@ export default function ReportScreen() {
                   switch (phoneFilter) {
                     case 'today': return s.dateString === today;
                     case 'week':  return sDate >= weekStart && sDate <= todayDate;
-                    case 'month': return s.monthKey === monthKey;
+                    case 'month': return normalizeMonthKey(s.monthKey ?? '') === monthKey;
                     case 'year':  return s.yearKey === yr || s.dateString?.endsWith(`/${yr}`);
                   }
                 }).reverse();
@@ -701,7 +701,7 @@ export default function ReportScreen() {
                   switch (accFilter) {
                     case 'today': return s.dateString === today;
                     case 'week':  return sDate >= weekStart2 && sDate <= todayDate2;
-                    case 'month': return s.monthKey === monthKey;
+                    case 'month': return normalizeMonthKey(s.monthKey ?? '') === monthKey;
                     case 'year':  return s.yearKey === yr || s.dateString?.endsWith(`/${yr}`);
                   }
                 }).reverse();

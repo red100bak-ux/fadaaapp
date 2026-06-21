@@ -229,8 +229,8 @@ export default function StockScreen() {
       <AppHeader
         title="فضاء الأخوين"
         sub={`${ROLE_ICON[auth?.role ?? 'staff']} ${auth?.name ?? ''}`}
-        onBell={(isAdmin || isMosaed) ? () => setBellModal(true) : undefined}
-        bellBadge={(isAdmin || isMosaed) ? displayBadge : undefined}
+        onBell={(isPransibal || auth?.role === 'super_admin') ? () => setBellModal(true) : undefined}
+        bellBadge={(isPransibal || auth?.role === 'super_admin') ? displayBadge : undefined}
         leftAction={{ label: '🔒 خروج', onPress: handleLogout }}
       />
 

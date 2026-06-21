@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
   Alert, Keyboard, Modal, KeyboardAvoidingView, Platform,
@@ -14,7 +14,8 @@ const ORANGE = '#ea580c';
 const ORANGE_BORDER = '#fdba74';
 
 export default function RepairScreen() {
-  const { app, auth, updateApp } = useAppStore();
+  const { app, auth, updateApp, ensureMonthsLoaded } = useAppStore();
+  const [archiveOpen, setArchiveOpen] = useState(false);
 
   // ── Customer (on main screen) ──
   const [customerName, setCustomerName] = useState('');
@@ -58,12 +59,35 @@ export default function RepairScreen() {
   );
   const repairCat = repairFolder?.name ?? 'إصلاح مانيال';
 
+  const now = new Date();
+  const curMk = `${now.getFullYear()}_${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const { date: todayDate } = nowDate();
+
   const allRepairs = useMemo(
     () => (app.todaySales ?? []).filter((s) => s.cat === repairCat).reverse(),
     [app.todaySales, repairCat]
   );
-  const { date: todayDate } = nowDate();
-  const todayRepairs = allRepairs.filter((s) => s.dateString === todayDate);
+
+  const currentRepairs = useMemo(
+    () => allRepairs.filter((s) => (s.monthKey ?? curMk) === curMk),
+    [allRepairs, curMk]
+  );
+
+  const archiveRepairs = useMemo(
+    () => allRepairs.filter((s) => s.monthKey && s.monthKey !== curMk),
+    [allRepairs, curMk]
+  );
+
+  const todayRepairs = currentRepairs.filter((s) => s.dateString === todayDate);
+
+  // تحميل الشهور القديمة باش يبان الأرشيف
+  useEffect(() => {
+    const salesMonths = (app as any)._core?.salesMonths as string[] | undefined;
+    if (salesMonths?.length) {
+      const oldMonths = salesMonths.filter((mk: string) => mk !== curMk);
+      if (oldMonths.length) ensureMonthsLoaded(oldMonths);
+    }
+  }, []);
 
   function togglePart(id: string) {
     setSelectedParts((prev) =>
@@ -102,18 +126,23 @@ export default function RepairScreen() {
     setEditingDetail(false);
   }
 
-  function confirmDeliver() {
+  async function confirmDeliver() {
     if (!detailItem) return;
     const { date, dateTime } = nowDate();
+    const repairMk = detailItem.monthKey;
+    if (repairMk && repairMk !== curMk) {
+      await ensureMonthsLoaded([repairMk]);
+    }
+    const to = deliverTo.trim() || 'الزبون';
     updateApp(prev => ({
       ...prev,
       todaySales: prev.todaySales.map(s =>
         s.nid === detailItem.nid
-          ? { ...s, deliveredAt: dateTime, deliveredTo: deliverTo.trim() || 'الزبون', deliveredBy: auth?.name ?? '' }
+          ? { ...s, deliveredAt: dateTime, deliveredTo: to, deliveredBy: auth?.name ?? '' }
           : s
       ),
     }));
-    setDetailItem(prev => prev ? { ...prev, deliveredAt: dateTime, deliveredTo: deliverTo.trim() || 'الزبون', deliveredBy: auth?.name ?? '' } : prev);
+    setDetailItem(prev => prev ? { ...prev, deliveredAt: dateTime, deliveredTo: to, deliveredBy: auth?.name ?? '' } : prev);
     setDeliverModal(false);
     setDeliverTo('');
   }
@@ -195,6 +224,32 @@ export default function RepairScreen() {
         <TouchableOpacity style={s.addRepairBtn} onPress={openModal}>
           <Text style={s.addRepairTxt}>➕ إضافة هاتف للإصلاح</Text>
         </TouchableOpacity>
+
+        {/* الأرشيف — إصلاحات الشهور السابقة */}
+        {archiveRepairs.length > 0 && (
+          <TouchableOpacity
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fff7ed', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 10, borderWidth: 1.5, borderColor: '#f97316' }}
+            onPress={() => setArchiveOpen(v => !v)}
+          >
+            <View style={{ backgroundColor: '#f97316', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 }}>
+              <Text style={{ color: '#fff', fontWeight: '900', fontSize: 12 }}>{archiveRepairs.length}</Text>
+            </View>
+            <Text style={{ fontWeight: '900', fontSize: 14, color: '#f97316' }}>📦 الأرشيف {archiveOpen ? '▲' : '▼'}</Text>
+          </TouchableOpacity>
+        )}
+        {archiveOpen && archiveRepairs.map((item, i) => (
+          <TouchableOpacity
+            key={item.nid ?? i}
+            style={{ backgroundColor: '#fff', borderRadius: 10, padding: 10, marginBottom: 6, borderWidth: 1, borderColor: '#e2e8f0' }}
+            onPress={() => { setEditingDetail(false); setDetailItem(item); }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: '800', color: '#1e293b' }} numberOfLines={1}>{extractModel(item.name)}</Text>
+            <Text style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{item.dateString}</Text>
+            {item.deliveredAt && (
+              <Text style={{ fontSize: 10, color: '#16a34a', fontWeight: '800', marginTop: 2 }}>✅ تسلّم: {item.deliveredTo}</Text>
+            )}
+          </TouchableOpacity>
+        ))}
 
         {/* سجل اليوم */}
         <View style={s.logCard}>

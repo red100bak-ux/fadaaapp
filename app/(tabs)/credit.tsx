@@ -93,13 +93,13 @@ export default function CreditScreen() {
   }
 
   function deleteCustomer(id: string, name: string) {
-    setAppAlert({ icon: '🗑️', title: 'حذف الزبون', message: `حذف "${name}"؟`, buttons: [
+    setAppAlert({ icon: '🗑️', title: 'طلب حذف', message: `إرسال طلب حذف "${name}" للمدير؟`, buttons: [
       { label: 'إلغاء', onPress: () => setAppAlert(null) },
-      { label: '🗑️ حذف', danger: true, onPress: () => {
+      { label: '📨 إرسال', danger: true, onPress: () => {
         setAppAlert(null);
         updateApp((prev) => {
           const credit = { ...prev.credit };
-          if (credit[id]) credit[id] = { ...credit[id], pendingDeletion: true };
+          if (credit[id]) credit[id] = { ...credit[id], pendingDeletion: true, deletionRequestedBy: auth?.name ?? '' };
           return { ...prev, credit };
         });
       }},

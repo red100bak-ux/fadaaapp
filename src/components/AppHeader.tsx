@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { useAppStore } from '../store/appStore';
 
 interface Props {
@@ -16,6 +16,7 @@ interface Props {
 export default function AppHeader({ title, sub, subColor, bellBadge = 0, onBell, onBack, leftAction, leftAction2, rightAction }: Props) {
   const auth = useAppStore((s) => s.auth);
   const liveColor = useAppStore((s) => auth?.phone ? s.app.users[auth.phone]?.color : undefined);
+  const isOnline = useAppStore((s) => s.isOnline);
   const color = liveColor || auth?.color || '#5c67f2';
 
   return (
@@ -40,9 +41,10 @@ export default function AppHeader({ title, sub, subColor, bellBadge = 0, onBell,
 
       {/* وسط: العنوان */}
       <View style={s.center}>
-        <Text style={[s.title, { color }]} numberOfLines={1}>
-          <Text style={{ color }}>● </Text>{title}
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+          <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: isOnline ? '#16a34a' : '#ef4444', borderWidth: 1.5, borderColor: isOnline ? '#86efac' : '#fca5a5' }} />
+          <Text style={[s.title, { color }]} numberOfLines={1}>{title}</Text>
+        </View>
         {sub ? <Text style={[s.sub, subColor ? { color: subColor } : null]}>{sub}</Text> : null}
       </View>
 

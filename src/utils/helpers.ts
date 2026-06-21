@@ -28,7 +28,7 @@ export function nowDate(): NowResult {
     date,
     time,
     dateTime: `${date} ${time}`,
-    monthKey: `${year}-${d.getMonth() + 1}`,
+    monthKey: `${year}_${month}`,
     yearKey: year,
   };
 }
@@ -64,6 +64,13 @@ export function makeSaleRecord(
 export function formatMAD(n: number): string {
   if (!n || isNaN(n)) return '0 د';
   return n.toLocaleString('fr-MA') + ' د';
+}
+
+export function normalizeMonthKey(mk: string): string {
+  if (!mk) return mk;
+  const m = mk.match(/^(\d{4})-(\d{1,2})$/);
+  if (m) return `${m[1]}_${m[2].padStart(2, '0')}`;
+  return mk;
 }
 
 export function contrastText(bgHex: string): string {

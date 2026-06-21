@@ -12,6 +12,21 @@ function currentMonthKey(): string {
   return `${now.getFullYear()}_${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
+// تحويل الفورمات القديم "2026-6" للجديد "2026_06"
+function normalizeMonthKey(mk: string): string {
+  if (!mk) return mk;
+  // Old format: "YYYY-M" or "YYYY-MM" (with dash)
+  const dashMatch = mk.match(/^(\d{4})-(\d{1,2})$/);
+  if (dashMatch) {
+    return `${dashMatch[1]}_${dashMatch[2].padStart(2, '0')}`;
+  }
+  return mk;
+}
+
+function isOldMonthKey(mk: string): boolean {
+  return /^\d{4}-\d{1,2}$/.test(mk);
+}
+
 function prevMonthKey(): string {
   const now = new Date();
   let m = now.getMonth(); // 0-indexed
@@ -36,11 +51,22 @@ function monthKeyFromTs(ts: string): string {
   }
 }
 
+// ── إزالة المكررات بناءً على nid/id ──────────────────────────────
+function dedup<T extends { nid?: string; id?: string }>(arr: T[]): T[] {
+  const seen = new Set<string>();
+  return arr.filter(item => {
+    const key = item.nid ?? item.id ?? '';
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 // ── Merge months into full AppData ───────────────────────────────
 function mergeAppData(core: Partial<AppData>, months: Record<string, MonthlyDoc>): AppData {
-  const allSales   = Object.values(months).flatMap(m => m.sales   ?? []);
-  const allArchive = Object.values(months).flatMap(m => m.archive ?? []);
-  const allLog     = Object.values(months).flatMap(m => m.log     ?? []);
+  const allSales   = dedup(Object.values(months).flatMap(m => m.sales   ?? []));
+  const allArchive = dedup(Object.values(months).flatMap(m => m.archive ?? []));
+  const allLog     = dedup(Object.values(months).flatMap(m => m.log     ?? []));
   return ensureAppStructure({
     ...core,
     todaySales: allSales,
@@ -84,6 +110,31 @@ async function migrateIfNeeded(
   onDone(cleanCore, buckets);
 }
 
+// ── Migration: تحويل month keys من فورمات قديم "2026-6" لجديد "2026_06" ──
+async function migrateOldMonthKeys(salesMonths: string[]): Promise<string[] | null> {
+  const oldKeys = salesMonths.filter(isOldMonthKey);
+  if (oldKeys.length === 0) return null;
+
+  for (const oldMk of oldKeys) {
+    const newMk = normalizeMonthKey(oldMk);
+    try {
+      const oldData = await loadMonthData(oldMk);
+      if (!oldData) continue;
+      const newData = await loadMonthData(newMk);
+      const merged: MonthlyDoc = {
+        sales:   [...(newData?.sales   ?? []), ...(oldData.sales   ?? [])],
+        archive: [...(newData?.archive ?? []), ...(oldData.archive ?? [])],
+        log:     [...(newData?.log     ?? []), ...(oldData.log     ?? [])],
+      };
+      await saveMonthData(newMk, merged);
+    } catch {}
+  }
+
+  // نحدثو salesMonths بالفورمات الجديد
+  const newMonths = salesMonths.map(mk => normalizeMonthKey(mk));
+  return [...new Set(newMonths)].sort();
+}
+
 // ── Default data ─────────────────────────────────────────────────
 export const DEFAULT_FOLDERS: Folder[] = [
   { id: 'f1', name: 'جديد',          icon: '📱', active: true, colorClass: 'folder-new'    },
@@ -93,6 +144,7 @@ export const DEFAULT_FOLDERS: Folder[] = [
   { id: 'f4', name: 'سماعات',        icon: '🎧', active: true, colorClass: 'folder-acc'   },
   { id: 'f5', name: 'شواحن',         icon: '🔌', active: true, colorClass: 'folder-acc'   },
   { id: 'f6', name: 'كابلات',        icon: '🪢', active: true, colorClass: 'folder-acc'   },
+  { id: 'f_click', name: 'CLICK',    icon: '👆', active: true, special: 'click', colorClass: 'folder-acc' },
 ];
 
 const EMPTY_APP: AppData = {
@@ -113,6 +165,7 @@ interface AppStore {
   app: AppData;
   auth: AuthState | null;
   isLoaded: boolean;
+  isOnline: boolean;
 
   // internal (split state)
   _core: Partial<AppData>;
@@ -135,6 +188,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   app: EMPTY_APP,
   auth: null,
   isLoaded: false,
+  isOnline: false,
   _core: {},
   _months: {},
   _unsubs: [],
@@ -259,11 +313,29 @@ export const useAppStore = create<AppStore>((set, get) => ({
         }
 
         const newCore = { ...get()._core, ...rawCore };
+        // تنظيف المكررات من Firebase مرة وحيدة
+        const curMk2 = currentMonthKey();
+        AsyncStorage.getItem('fadaa_dedup_done').then(async (done) => {
+          if (done) return;
+          try {
+            const monthData = await loadMonthData(curMk2);
+            if (!monthData) return;
+            const cleanSales   = dedup(monthData.sales   ?? []);
+            const cleanArchive = dedup(monthData.archive ?? []);
+            const cleanLog     = dedup(monthData.log     ?? []);
+            if (cleanSales.length < (monthData.sales?.length ?? 0) ||
+                cleanArchive.length < (monthData.archive?.length ?? 0) ||
+                cleanLog.length < (monthData.log?.length ?? 0)) {
+              await saveMonthData(curMk2, { sales: cleanSales, archive: cleanArchive, log: cleanLog });
+            }
+            AsyncStorage.setItem('fadaa_dedup_done', '1');
+          } catch {}
+        }).catch(() => {});
         const newApp  = mergeAppData(newCore, get()._months);
-        set({ _core: newCore, app: newApp, isLoaded: true });
+        set({ _core: newCore, app: newApp, isLoaded: true, isOnline: true });
         AsyncStorage.setItem('fadaa_app_cache', JSON.stringify(newApp)).catch(() => {});
       },
-      (e) => console.error('Master listener error', e),
+      (e) => { console.error('Master listener error', e); set({ isOnline: false }); },
     );
     unsubs.push(unsubMaster);
 
@@ -291,6 +363,37 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
 
     set({ _unsubs: unsubs });
+
+    // Migration نظيفة مرة وحيدة — تحويل بيانات من "2026-6" لـ "2026_06"
+    AsyncStorage.getItem('fadaa_month_migrated').then(async (done) => {
+      if (done === '1') return;
+      const allKeys: string[] = (get()._core as any)?.salesMonths ?? [];
+      const oldKeys = allKeys.filter(isOldMonthKey);
+      if (oldKeys.length === 0) {
+        AsyncStorage.setItem('fadaa_month_migrated', '1');
+        return;
+      }
+      for (const oldMk of oldKeys) {
+        const newMk = normalizeMonthKey(oldMk);
+        try {
+          const oldData = await loadMonthData(oldMk);
+          if (!oldData) continue;
+          const newData = await loadMonthData(newMk);
+          // تصحيح monthKey داخل كل record
+          const fixKey = (s: any) => ({ ...s, monthKey: normalizeMonthKey(s.monthKey ?? oldMk) });
+          const merged: MonthlyDoc = {
+            sales:   dedup([...(newData?.sales ?? []), ...(oldData.sales ?? []).map(fixKey)]),
+            archive: dedup([...(newData?.archive ?? []), ...(oldData.archive ?? [])]),
+            log:     dedup([...(newData?.log ?? []), ...(oldData.log ?? []).map(fixKey)]),
+          };
+          await saveMonthData(newMk, merged);
+        } catch {}
+      }
+      // تحديث salesMonths بالفورمات الصحيح
+      const updatedMonths = [...new Set(allKeys.map(normalizeMonthKey))].sort();
+      saveMasterData({ ...(get()._core as any), salesMonths: updatedMonths });
+      AsyncStorage.setItem('fadaa_month_migrated', '1');
+    }).catch(() => {});
   },
 
   stopListening: () => {

@@ -1,4 +1,5 @@
-﻿import { useState, useMemo } from 'react';
+﻿import { useState, useMemo, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
   Modal, Alert, KeyboardAvoidingView, Platform, Keyboard,
@@ -120,6 +121,12 @@ export default function AdminScreen() {
   });
   const [bellTab, setBellTab] = useState<'alerts' | 'log'>('alerts');
   const [readAlerts, setReadAlerts] = useState<string[]>([]);
+
+  useEffect(() => {
+    AsyncStorage.getItem('fadaa_read_alerts').then(raw => {
+      if (raw) setReadAlerts(JSON.parse(raw));
+    }).catch(() => {});
+  }, []);
   const [search, setSearch] = useState('');
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [cloudBackups, setCloudBackups] = useState<CloudBackup[]>(() => app.cloudBackups ?? []);
@@ -217,7 +224,12 @@ export default function AdminScreen() {
   const alertsBadge = unreadSystemAlerts + unreadAdminCount + unreadReminders;
 
   function markAlertRead(id: string) {
-    setReadAlerts(prev => prev.includes(id) ? prev : [...prev, id]);
+    setReadAlerts(prev => {
+      if (prev.includes(id)) return prev;
+      const next = [...prev, id];
+      AsyncStorage.setItem('fadaa_read_alerts', JSON.stringify(next)).catch(() => {});
+      return next;
+    });
   }
   const totalBadge = alertsBadge + unreadOpCount;
 
@@ -443,45 +455,12 @@ export default function AdminScreen() {
         <AppHeader
           title="فضاء الأخوين"
           sub="⚙️ الإدارة والتحكم"
-          onBell={() => setBellModal(true)}
-          bellBadge={totalBadge}
+          onBell={(isPransibal || isSuper) ? () => setBellModal(true) : undefined}
+          bellBadge={(isPransibal || isSuper) ? totalBadge : undefined}
           leftAction={{ label: '🔒 خروج', onPress: () => setLogoutModal(true) }}
           leftAction2={__DEV__ ? { label: '🔄', onPress: () => DevSettings.reload() } : undefined}
         />
 
-        {/* إحصائيات سريعة */}
-        <View style={adSt.statsRow}>
-          <View style={[adSt.statCard, { backgroundColor: '#eff6ff', borderColor: '#93c5fd' }]}>
-            <Text style={adSt.statEmoji}>📦</Text>
-            <Text style={adSt.statNum}>{totalProducts}</Text>
-            <Text style={adSt.statLabel}>سلعة</Text>
-          </View>
-          <View style={[adSt.statCard, { backgroundColor: '#f0fdf4', borderColor: '#86efac' }]}>
-            <Text style={adSt.statEmoji}>🔢</Text>
-            <Text style={adSt.statNum}>{totalQty}</Text>
-            <Text style={adSt.statLabel}>قطعة</Text>
-          </View>
-          <View style={[adSt.statCard, { backgroundColor: '#fffbeb', borderColor: '#fde68a' }]}>
-            <Text style={adSt.statEmoji}>💰</Text>
-            <Text style={adSt.statNum}>{todayRevenue}</Text>
-            <Text style={adSt.statLabel}>مبيعات اليوم</Text>
-          </View>
-          <View style={[adSt.statCard, { backgroundColor: todayProfit >= 0 ? '#f0fdf4' : '#fef2f2', borderColor: todayProfit >= 0 ? '#86efac' : '#fca5a5' }]}>
-            <Text style={adSt.statEmoji}>📊</Text>
-            <Text style={[adSt.statNum, { color: todayProfit >= 0 ? '#16a34a' : '#dc2626' }]}>{todayProfit >= 0 ? '+' : ''}{todayProfit}</Text>
-            <Text style={adSt.statLabel}>ربح</Text>
-          </View>
-          <View style={[adSt.statCard, { backgroundColor: '#f5f3ff', borderColor: '#c4b5fd' }]}>
-            <Text style={adSt.statEmoji}>👥</Text>
-            <Text style={adSt.statNum}>{usersCount}</Text>
-            <Text style={adSt.statLabel}>خدام</Text>
-          </View>
-          <View style={[adSt.statCard, { backgroundColor: '#fdf4ff', borderColor: '#e879f9' }]}>
-            <Text style={adSt.statEmoji}>🎧</Text>
-            <Text style={adSt.statNum}>{otherCount}</Text>
-            <Text style={adSt.statLabel}>{otherQty} ق أخرى</Text>
-          </View>
-        </View>
 
         {/* طلبات الحذف الشاملة — Pransibal فقط */}
         {isPransibal && totalPendingAll > 0 && (
@@ -645,6 +624,25 @@ export default function AdminScreen() {
           <TouchableOpacity style={styles.addBtnRow} onPress={() => setAddBtnModal(true)}>
             <Text style={styles.addBtnTxt}>+ إضافة زر</Text>
           </TouchableOpacity>
+        )}
+
+        {/* إحصائيات — Pransibal و Super Admin فقط */}
+        {isSuper && (
+          <View style={{ marginHorizontal: 12, marginTop: 10, borderRadius: 14, backgroundColor: '#fff', borderWidth: 1.5, borderColor: '#e2e8f0', overflow: 'hidden' }}>
+            {[
+              { emoji: '📦', num: totalProducts,   label: 'سلعة',         bg: '#eff6ff', color: '#3b82f6' },
+              { emoji: '🔢', num: totalQty,         label: 'قطعة',         bg: '#f0fdf4', color: '#16a34a' },
+              { emoji: '💰', num: todayRevenue,     label: 'مبيعات اليوم', bg: '#fffbeb', color: '#d97706' },
+              { emoji: '📊', num: `${todayProfit >= 0 ? '+' : ''}${todayProfit}`, label: 'ربح اليوم', bg: todayProfit >= 0 ? '#f0fdf4' : '#fef2f2', color: todayProfit >= 0 ? '#16a34a' : '#dc2626' },
+              { emoji: '👥', num: usersCount,       label: 'خدام',         bg: '#f5f3ff', color: '#7c3aed' },
+              { emoji: '🎧', num: `${otherCount} / ${otherQty}ق`, label: 'أخرى',  bg: '#fdf4ff', color: '#a21caf' },
+            ].map((item, i, arr) => (
+              <View key={i} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: item.bg, borderBottomWidth: i < arr.length - 1 ? 1 : 0, borderBottomColor: '#e2e8f0' }}>
+                <Text style={{ fontSize: 20, fontWeight: '900', color: item.color }}>{item.num} <Text style={{ fontSize: 13, color: '#64748b', fontWeight: '700' }}>{item.label}</Text></Text>
+                <Text style={{ fontSize: 22 }}>{item.emoji}</Text>
+              </View>
+            ))}
+          </View>
         )}
 
         <View style={{ height: 110 }} />

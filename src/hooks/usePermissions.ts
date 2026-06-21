@@ -31,8 +31,8 @@ export function usePermissions() {
     canReturn:        !isView,
     canAddProduct:    isAdmin,
     canEditProduct:   isAdmin || canEditStock,
-    canDeleteDirect:  isPransibal,
-    canRequestDelete: false,
+    canDeleteDirect:  false,
+    canRequestDelete: isAdmin,
     canApproveDelete: isPransibal,
 
     // ───── الكريدي ─────

@@ -16,6 +16,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 // vision-camera imported lazily inside VisionCameraView — static import crashes Expo Go
 
 import { useAppStore } from '../src/store/appStore';
+import { usePermissions } from '../src/hooks/usePermissions';
 import { Colors, Radii, Shadow } from '../src/theme/colors';
 import { formatMAD, makeSaleRecord, nowDate, generateId } from '../src/utils/helpers';
 import { uploadItemImage } from '../src/firebase/storage';
@@ -152,6 +153,7 @@ function CameraOverlay({ scanned, onClose }: { scanned: boolean; onClose: () => 
 // ─── Main scan screen ───────────────────────────────────────────────────────
 export default function ScanScreen() {
   const { app, auth, updateApp } = useAppStore();
+  const perm = usePermissions();
   const { mode } = useLocalSearchParams<{ mode: string }>();
   const scanMode = (mode as ScanMode) || 'sell';
 
@@ -263,7 +265,17 @@ export default function ScanScreen() {
 
     if (scanMode === 'add_stock') {
       if (item) {
-        setFound({ bc, item });
+        // المنتج موجود — +1 تلقائياً
+        const newQty = item.qty + 1;
+        updateApp((prev) => ({
+          ...prev,
+          stock: { ...prev.stock, [bc]: { ...item, qty: newQty } },
+        }));
+        logActivity('add_stock', `📦 زاد: ${item.name} (+1 — باقي: ${newQty})`, auth?.name ?? '');
+        showAlert('✅', `+1 — ${item.name}`, `الكمية الجديدة: ${newQty}`, [
+          { label: 'عاود سكان', onPress: () => { setAlertModal(null); setScanned(false); }, primary: true },
+          { label: 'تعديل', onPress: () => { setAlertModal(null); setFound({ bc, item: { ...item, qty: newQty } }); } },
+        ]);
       } else {
         setManualCode(bc);
         const defaultCat = app.folders?.find((fl) => fl.active)?.name || '';
@@ -594,7 +606,7 @@ export default function ScanScreen() {
                 <Text style={[styles.qtyTxt, { color: found.item.qty > 2 ? Colors.success : Colors.danger }]}>{found.item.qty}</Text>
               </View>
               <Text style={styles.foundSell}>{found.item.sell} د</Text>
-              <Text style={styles.foundBuy}>ش: {found.item.buy} د</Text>
+              {!perm.isStaff && <Text style={styles.foundBuy}>ش: {found.item.buy} د</Text>}
             </View>
           </View>
           <TouchableOpacity
@@ -643,14 +655,18 @@ export default function ScanScreen() {
                 <Text style={[infoVal, { color: '#10b981', fontWeight: '900', fontSize: 18 }]}>{found.item.sell} د</Text>
                 <Text style={infoLbl}>💰 ثمن البيع</Text>
               </View>
-              <View style={infoRow}>
-                <Text style={[infoVal, { color: '#dc2626', fontWeight: '900', fontSize: 18 }]}>{found.item.buy} د</Text>
-                <Text style={infoLbl}>🛒 ثمن الشراء</Text>
-              </View>
-              <View style={infoRow}>
-                <Text style={[infoVal, { color: '#7c3aed', fontWeight: '900', fontSize: 18 }]}>{found.item.sell - found.item.buy} د</Text>
-                <Text style={infoLbl}>📈 الربح</Text>
-              </View>
+              {!perm.isStaff && (
+                <View style={infoRow}>
+                  <Text style={[infoVal, { color: '#dc2626', fontWeight: '900', fontSize: 18 }]}>{found.item.buy} د</Text>
+                  <Text style={infoLbl}>🛒 ثمن الشراء</Text>
+                </View>
+              )}
+              {!perm.isStaff && (
+                <View style={infoRow}>
+                  <Text style={[infoVal, { color: '#7c3aed', fontWeight: '900', fontSize: 18 }]}>{found.item.sell - found.item.buy} د</Text>
+                  <Text style={infoLbl}>📈 الربح</Text>
+                </View>
+              )}
               <View style={infoRow}>
                 <View style={[styles.qtyBadge, { backgroundColor: found.item.qty > 2 ? Colors.successLight : Colors.dangerLight, alignSelf: 'flex-end' }]}>
                   <Text style={[styles.qtyTxt, { color: found.item.qty > 2 ? Colors.success : Colors.danger }]}>{found.item.qty}</Text>

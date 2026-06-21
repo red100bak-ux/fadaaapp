@@ -24,7 +24,7 @@ import type { StockItem, ArchiveSale } from '../../src/types';
 const EMPTY_FORM = { name: '', sell: '', buy: '', qty: '', supplier: '', barcode: '', cat: '' };
 
 export default function FolderDetailScreen() {
-  const { id, editBarcode: editBarcodeParam } = useLocalSearchParams<{ id: string; editBarcode?: string }>();
+  const { id, editBarcode: editBarcodeParam, openAdd: autoAddParam } = useLocalSearchParams<{ id: string; editBarcode?: string; openAdd?: string }>();
   const folderId = decodeURIComponent(id ?? '');
   const { app, auth, updateApp } = useAppStore();
 
@@ -33,6 +33,7 @@ export default function FolderDetailScreen() {
 
   const [search, setSearch] = useState('');
   const [addModal, setAddModal] = useState(false);
+  const [clickActionItem, setClickActionItem] = useState<{ bc: string; item: StockItem } | null>(null);
   const [editBarcode, setEditBarcode] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [sellConfirm, setSellConfirm] = useState<{ bc: string; item: StockItem } | null>(null);
@@ -127,6 +128,7 @@ export default function FolderDetailScreen() {
 
   const ARCHIVE_CATS = ['جديد', 'مستعمل'];
   const isArchiveCat = ARCHIVE_CATS.includes(folder?.name ?? '');
+  const isClickFolder = folder?.special === 'click';
 
   const filtered = useMemo(() => {
     const active = isArchiveCat
@@ -169,6 +171,17 @@ export default function FolderDetailScreen() {
       setAddModal(true);
     }
   }, [editBarcodeParam, folder?.id]);
+
+  // فتح modal الإضافة تلقائياً إلا جاء param openAdd=1
+  useEffect(() => {
+    if (autoAddParam === '1' && folder) {
+      setEditBarcode(null);
+      setForm({ ...EMPTY_FORM, cat: folder.name });
+      setNewImg(null);
+      setRemoveImg(false);
+      setAddModal(true);
+    }
+  }, [autoAddParam, folder?.id]);
 
   if (!folder) {
     return (
@@ -356,7 +369,7 @@ export default function FolderDetailScreen() {
         : prev.archiveSales;
       if (!isEdit) {
         const record = makeSaleRecord({
-          name: `📦 جاب سلعة: ${item.name}`,
+          name: `📦 أضاف: ${item.name}`,
           sell: item.sell * item.qty,
           buy: item.buy * item.qty,
           cat: folder!.name,
@@ -446,38 +459,22 @@ export default function FolderDetailScreen() {
   }
 
   function deleteItem(bc: string, item: StockItem) {
-    if (!perm.canDeleteDirect && !perm.canRequestDelete) {
+    if (!perm.canRequestDelete) {
       setAppAlert({ icon: '🚫', title: 'غير مصرح', message: 'ما عندكش الإذن بالحذف', buttons: [{ label: 'حسناً', onPress: () => setAppAlert(null), primary: true }] }); return;
     }
-    if (perm.canRequestDelete && !perm.canDeleteDirect) {
-      // Staff: request deletion approval
-      updateApp((prev) => ({
-        ...prev,
-        stock: {
-          ...prev.stock,
-          [bc]: { ...item, pendingDeletion: true, deletionRequestedBy: auth?.name },
-        },
-      }));
-      logActivity('delete_req', `🗑️ طلب حذف: ${item.name}`, auth?.name ?? '');
-      setAppAlert({ icon: '📨', title: 'تم الإرسال', message: 'تم إرسال طلب الحذف للمراجعة', buttons: [{ label: 'حسناً', onPress: () => setAppAlert(null), primary: true }] });
-    } else {
-      setAppAlert({ icon: '🗑️', title: 'حذف السلعة', message: `حذف "${item.name}"؟`, buttons: [
-        { label: 'إلغاء', onPress: () => setAppAlert(null) },
-        { label: '🗑️ حذف', danger: true, onPress: () => {
-          setAppAlert(null);
-          deleteItemImage(item.img);
-          updateApp((prev) => {
-            const s = { ...prev.stock };
-            delete s[bc];
-            const record = makeSaleRecord({
-              name: `📌 حذف: ${item.name}`,
-              sell: 0, buy: item.buy, cat: folder!.name, seller: auth?.name ?? '',
-            });
-            return { ...prev, stock: s, todaySales: [...prev.todaySales, record] };
-          });
-        }},
-      ]});
-    }
+    setAppAlert({ icon: '🗑️', title: 'طلب حذف', message: `إرسال طلب حذف "${item.name}" للمدير؟`, buttons: [
+      { label: 'إلغاء', onPress: () => setAppAlert(null) },
+      { label: '📨 إرسال', danger: true, onPress: () => {
+        setAppAlert(null);
+        updateApp((prev) => ({
+          ...prev,
+          stock: { ...prev.stock, [bc]: { ...item, pendingDeletion: true, deletionRequestedBy: auth?.name } },
+        }));
+        logActivity('delete_req', `🗑️ طلب حذف: ${item.name}`, auth?.name ?? '');
+        setAppAlert({ icon: '📨', title: 'تم الإرسال', message: 'تم إرسال طلب الحذف للمراجعة', buttons: [{ label: 'حسناً', onPress: () => setAppAlert(null), primary: true }] });
+      }},
+    ]});
+
   }
 
   function f(k: keyof typeof EMPTY_FORM, v: string) {
@@ -517,7 +514,13 @@ export default function FolderDetailScreen() {
           return (
           <TouchableOpacity
             style={[styles.itemCard, item.pendingDeletion && styles.itemPending]}
-            onPress={() => item.soldAt ? setSoldDetail({ bc, item }) : setItemDetail({ bc, item })}
+            onPress={() => {
+              if (!item.pendingDeletion && (isClickFolder || perm.isPransibal)) {
+                setClickActionItem({ bc, item });
+              } else {
+                item.soldAt ? setSoldDetail({ bc, item }) : setItemDetail({ bc, item });
+              }
+            }}
             activeOpacity={0.75}
           >
 
@@ -549,7 +552,7 @@ export default function FolderDetailScreen() {
             {/* MIDDLE: price + details */}
             <View style={styles.itemContent}>
               <Text style={styles.itemSell}>{formatMAD(item.sell)}</Text>
-              <Text style={styles.itemBuy}>ش: {formatMAD(item.buy)}</Text>
+              {!perm.isStaff && <Text style={styles.itemBuy}>ش: {formatMAD(item.buy)}</Text>}
               <View style={styles.metaRow}>
                 {item.supplier ? <Text style={styles.supplierMeta} numberOfLines={1}>🏭 {item.supplier}</Text> : null}
                 {item.addedBy ? <Text style={[styles.userMeta, { color: addedColor }]} numberOfLines={1}>👤 {item.addedBy}</Text> : null}
@@ -557,6 +560,7 @@ export default function FolderDetailScreen() {
               </View>
               {item.pendingDeletion && <Text style={styles.pendingTag}>⏳ طلب حذف معلق</Text>}
             </View>
+
 
             {/* LEFT: edit/delete buttons — only in editMode */}
             {editMode && (
@@ -616,6 +620,79 @@ export default function FolderDetailScreen() {
         ) : null}
       />
 
+
+      {/* زر إضافة منتج — Admin فقط */}
+      {perm.canAddProduct && !isClickFolder && (
+        <TouchableOpacity
+          style={{ position: 'absolute', bottom: 90, left: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: '#5c67f2', alignItems: 'center', justifyContent: 'center', elevation: 6, shadowColor: '#5c67f2', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }}
+          onPress={openAdd}
+          activeOpacity={0.85}
+        >
+          <Text style={{ fontSize: 28, color: '#fff', lineHeight: 32 }}>+</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* CLICK — modal 3 خيارات */}
+      {clickActionItem && (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setClickActionItem(null)}>
+          <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' }} activeOpacity={1} onPress={() => setClickActionItem(null)}>
+            <View style={{ backgroundColor: '#fff', borderRadius: 20, padding: 24, width: '85%', gap: 14 }} onStartShouldSetResponder={() => true}>
+              <Text style={{ fontSize: 16, fontWeight: '900', color: '#1e293b', textAlign: 'center', marginBottom: 4 }} numberOfLines={1}>{clickActionItem.item.name}</Text>
+
+              {/* بيع */}
+              {clickActionItem.item.qty > 0 && (
+                <TouchableOpacity
+                  style={{ backgroundColor: '#10b981', paddingVertical: 14, borderRadius: 14, alignItems: 'center' }}
+                  onPress={() => { setClickActionItem(null); sellItem(clickActionItem.bc, clickActionItem.item); }}
+                >
+                  <Text style={{ color: '#fff', fontSize: 15, fontWeight: '900' }}>💰 بيع — {clickActionItem.item.sell} د</Text>
+                </TouchableOpacity>
+              )}
+
+              {/* روتور */}
+              <TouchableOpacity
+                style={{ backgroundColor: '#f97316', paddingVertical: 14, borderRadius: 14, alignItems: 'center' }}
+                onPress={() => {
+                  setClickActionItem(null);
+                  const { bc, item } = clickActionItem;
+                  updateApp(prev => ({
+                    ...prev,
+                    stock: { ...prev.stock, [bc]: { ...item, qty: item.qty + 1 } },
+                    todaySales: [...prev.todaySales, { nid: `ret_${Date.now()}`, name: item.name, sell: -(item.sell), buy: -(item.buy), cat: item.cat, seller: auth?.name ?? '', time: new Date().toLocaleTimeString('fr-MA', { hour: '2-digit', minute: '2-digit' }), dateString: new Date().toLocaleDateString('fr-MA', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '/'), monthKey: `${new Date().getFullYear()}_${String(new Date().getMonth() + 1).padStart(2, '0')}`, yearKey: String(new Date().getFullYear()) }],
+                  }));
+                  logActivity('return', `↩️ رجع: ${item.name}`, auth?.name ?? '', item.sell);
+                }}
+              >
+                <Text style={{ color: '#fff', fontSize: 15, fontWeight: '900' }}>↩️ روتور — رجع للستوك</Text>
+              </TouchableOpacity>
+
+              {/* خسرة */}
+              {clickActionItem.item.qty > 0 && (
+                <TouchableOpacity
+                  style={{ backgroundColor: '#dc2626', paddingVertical: 14, borderRadius: 14, alignItems: 'center' }}
+                  onPress={() => {
+                    setClickActionItem(null);
+                    const { bc, item } = clickActionItem;
+                    const newQty = item.qty - 1;
+                    updateApp(prev => ({
+                      ...prev,
+                      stock: { ...prev.stock, [bc]: { ...item, qty: newQty } },
+                      todaySales: [...prev.todaySales, { nid: `loss_${Date.now()}`, name: `🗑️ خسرة: ${item.name}`, sell: 0, buy: item.buy, cat: item.cat, seller: auth?.name ?? '', time: new Date().toLocaleTimeString('fr-MA', { hour: '2-digit', minute: '2-digit' }), dateString: new Date().toLocaleDateString('fr-MA', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '/'), monthKey: `${new Date().getFullYear()}_${String(new Date().getMonth() + 1).padStart(2, '0')}`, yearKey: String(new Date().getFullYear()) }],
+                    }));
+                    logActivity('expense', `💸 خسرة: ${item.name} — ${item.buy} د`, auth?.name ?? '', item.buy);
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontSize: 15, fontWeight: '900' }}>💸 خسرة — {clickActionItem.item.buy} د</Text>
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity onPress={() => setClickActionItem(null)}>
+                <Text style={{ textAlign: 'center', color: '#94a3b8', fontWeight: '700', marginTop: 4 }}>إلغاء</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      )}
 
       {/* ═══ CAMERA ═══ */}
       <Modal visible={showCamera} animationType="slide" onRequestClose={() => { setShowCamera(false); setPhotoPreview(null); setCropMode(false); setFreeCropMode(false); fcInitRef.current = false; }}>
