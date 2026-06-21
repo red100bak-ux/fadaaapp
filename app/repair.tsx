@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useAppStore } from '../src/store/appStore';
-import { nowDate, formatMAD, makeSaleRecord } from '../src/utils/helpers';
+import { nowDate, formatMAD, makeSaleRecord, normalizeMonthKey } from '../src/utils/helpers';
 import AppHeader from '../src/components/AppHeader';
 import AppAlert, { AppAlertButton } from '../src/components/AppAlert';
 
@@ -69,16 +69,17 @@ export default function RepairScreen() {
   );
 
   const currentRepairs = useMemo(
-    () => allRepairs.filter((s) => (s.monthKey ?? curMk) === curMk),
+    () => allRepairs.filter((s) => normalizeMonthKey(s.monthKey ?? curMk) === curMk),
     [allRepairs, curMk]
   );
 
   const archiveRepairs = useMemo(
-    () => allRepairs.filter((s) => s.monthKey && s.monthKey !== curMk),
+    () => allRepairs.filter((s) => s.monthKey && normalizeMonthKey(s.monthKey) !== curMk),
     [allRepairs, curMk]
   );
 
-  const todayRepairs = currentRepairs.filter((s) => s.dateString === todayDate);
+  // كل إصلاحات الشهر الحالي (مشي فقط اليوم)
+  const todayRepairs = currentRepairs;
 
   // تحميل الشهور القديمة باش يبان الأرشيف
   useEffect(() => {
@@ -253,7 +254,7 @@ export default function RepairScreen() {
 
         {/* سجل اليوم */}
         <View style={s.logCard}>
-          <Text style={s.logTitle}>📋 سجل الإصلاحات اليوم:</Text>
+          <Text style={s.logTitle}>📋 سجل إصلاحات الشهر:</Text>
           <View style={s.logDivider} />
           {todayRepairs.length === 0 ? (
             <Text style={s.emptyTxt}>ما مسجلة حتى عملية اليوم.</Text>
