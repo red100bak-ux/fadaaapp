@@ -655,7 +655,7 @@ export default function FolderDetailScreen() {
       {/* زر إضافة منتج — Admin فقط */}
       {(perm.canAddProduct || isClickFolder) && (
         <TouchableOpacity
-          style={{ position: 'absolute', bottom: 130, left: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: isClickFolder ? '#10b981' : '#5c67f2', alignItems: 'center', justifyContent: 'center', elevation: 20, zIndex: 999, shadowColor: '#5c67f2', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }}
+          style={{ position: 'absolute', bottom: 90, left: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: isClickFolder ? '#10b981' : '#5c67f2', alignItems: 'center', justifyContent: 'center', elevation: 20, zIndex: 999, shadowColor: '#5c67f2', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }}
           onPress={openAdd}
           activeOpacity={0.85}
         >
@@ -1124,10 +1124,10 @@ export default function FolderDetailScreen() {
 
               {/* المجلد */}
               <TouchableOpacity style={styles.supplierDropdown} onPress={() => { setShowCats(v => !v); setShowSuppliers(false); }}>
-                <Text style={{ color: Colors.textMuted }}>{showCats ? '▲' : '▼'}</Text>
-                <Text style={styles.supplierDropdownTxt}>
-                  {(() => { const f2 = app.folders?.find(f3 => f3.name === form.cat); return f2 ? `${f2.icon} ${f2.name}` : (form.cat || 'اختر المجلد'); })()}
+                <Text style={[styles.supplierDropdownTxt, { flex: 1, textAlign: 'right' }]}>
+                  {(() => { const f2 = app.folders?.find(f3 => f3.name === form.cat); return f2 ? `${f2.name} ${f2.icon}` : (form.cat || 'اختر المجلد'); })()}
                 </Text>
+                <Text style={{ color: Colors.textMuted, marginLeft: 8 }}>{showCats ? '▲' : '▼'}</Text>
               </TouchableOpacity>
               {showCats && (
                 <View style={styles.inlineList}>
