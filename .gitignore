@@ -39,3 +39,9 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+gradle-8.10.2-all.zip
+*.zip
+android/
+.gradle/
+build/
