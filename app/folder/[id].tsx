@@ -72,6 +72,7 @@ export default function FolderDetailScreen() {
   const [appAlert, setAppAlert] = useState<{ icon?: string; title: string; message?: string; buttons: AppAlertButton[] } | null>(null);
   const [returnReasonEntry, setReturnReasonEntry] = useState<{ entry: any } | null>(null);
   const [pendingLinked, setPendingLinked] = useState<{ bc: string; qty: number }[]>([]);
+  const [manualBcInput, setManualBcInput] = useState('');
   const formScrollRef = useRef<ScrollView>(null);
   const [freeCropMode, setFreeCropMode] = useState(false);
   const [cropBox, setCropBox] = useState({ x: 16, y: 16, w: 300, h: 340 });
@@ -265,48 +266,20 @@ export default function FolderDetailScreen() {
     bcScannedRef.current = true;
     setShowBcScanner(false);
 
-    // إلا كنا في وضع التعديل → ربط باركود جديد
-    if (editBarcode && data !== editBarcode) {
-      const existing = app.stock[editBarcode];
-      const alreadyLinked = existing?.linkedBarcodes?.find(l => l.bc === data);
-      if (alreadyLinked) {
-        setAppAlert({ icon: 'ℹ️', title: 'مربوط بالفعل', message: `${data} مربوط بالفعل`, buttons: [{ label: 'حسناً', onPress: () => setAppAlert(null), primary: true }] });
-        return;
-      }
-      if (app.stock[data] && app.stock[data].name !== existing?.name) {
-        setAppAlert({ icon: '⚠️', title: 'منتج آخر', message: `هاد الباركود مربوط بـ "${app.stock[data].name}"`, buttons: [{ label: 'حسناً', onPress: () => setAppAlert(null), primary: true }] });
-        return;
-      }
-      const linkedQty = app.stock[data]?.qty ?? 1;
-      updateApp(prev => ({
-        ...prev,
-        stock: {
-          ...prev.stock,
-          [editBarcode]: {
-            ...prev.stock[editBarcode],
-            linkedBarcodes: [...(prev.stock[editBarcode].linkedBarcodes ?? []), { bc: data, qty: linkedQty }],
-          },
-        },
-      }));
-      setAppAlert({ icon: '✅', title: 'تم الربط', message: `${data} مربوط — ${linkedQty} قطعة`, buttons: [{ label: 'حسناً', onPress: () => setAppAlert(null), primary: true }] });
+    // نفس الكود موجود → +1 أوتوماتيك
+    const existingInList = pendingLinked.find(l => l.bc === data);
+    if (existingInList) {
+      setPendingLinked(p => p.map(l => l.bc === data ? { ...l, qty: l.qty + 1 } : l));
+      setAppAlert({ icon: '✅', title: `+1 — ${data}`, message: `الكمية: ${existingInList.qty + 1}`, buttons: [{ label: 'حسناً', onPress: () => setAppAlert(null), primary: true }] });
       return;
     }
 
-    // وضع الإضافة مع باركود رئيسي موجود → ربط
-    if (!editBarcode && form.barcode && data !== form.barcode) {
-      const alreadyPending = pendingLinked.find(l => l.bc === data);
-      if (alreadyPending) {
-        setAppAlert({ icon: 'ℹ️', title: 'مربوط بالفعل', message: `${data} مضاف`, buttons: [{ label: 'حسناً', onPress: () => setAppAlert(null), primary: true }] });
-        return;
-      }
-      const linkedQty = app.stock[data]?.qty ?? 1;
-      setPendingLinked(p => [...p, { bc: data, qty: linkedQty }]);
-      setAppAlert({ icon: '✅', title: 'تم الربط', message: `${data} مضاف — ${linkedQty} قطعة`, buttons: [{ label: 'حسناً', onPress: () => setAppAlert(null), primary: true }] });
-      return;
-    }
+    // كود جديد → يضاف للقائمة
+    setPendingLinked(p => [...p, { bc: data, qty: 1 }]);
+    setAppAlert({ icon: '✅', title: 'أضيف', message: `${data} — 1 قطعة`, buttons: [{ label: 'حسناً', onPress: () => setAppAlert(null), primary: true }] });
 
-    // وضع الإضافة العادي
-    f('barcode', data);
+    // مزال نحتاج barcode الرئيسي للفورم
+    if (!form.barcode) f('barcode', data);
     const existing = app.stock[data];
     if (existing) {
       setAppAlert({ icon: '⚠️', title: 'منتوج موجود', message: `"${existing.name}" موجود في المخزون. بغيتي تعدّل عليه؟`, buttons: [
@@ -371,7 +344,10 @@ export default function FolderDetailScreen() {
       return;
     }
     const isEdit = !!editBarcode;
-    const newBc = form.barcode.trim() || (isEdit ? editBarcode! : generateId());
+    // في الإضافة: أول كود من pendingLinked هو الرئيسي
+    const firstBc = !isEdit && pendingLinked.length > 0 ? pendingLinked[0].bc : form.barcode.trim();
+    const firstQty = !isEdit && pendingLinked.length > 0 ? pendingLinked[0].qty : undefined;
+    const newBc = firstBc || (isEdit ? editBarcode! : generateId());
     const bc = newBc;
     const barcodeChanged = isEdit && bc !== editBarcode;
     const originalItem = isEdit ? app.stock[editBarcode!] : null;
@@ -397,10 +373,10 @@ export default function FolderDetailScreen() {
       cat: form.cat || folder!.name,
       sell: parseFloat(form.sell) || 0,
       buy: parseFloat(form.buy) || 0,
-      qty: isEdit ? Math.max(0, (originalItem?.qty ?? 0) + (parseInt(form.qty) || 0)) : Math.max(1, parseInt(form.qty) || 1),
+      qty: isEdit ? Math.max(0, (originalItem?.qty ?? 0) + (parseInt(form.qty) || 0)) : Math.max(1, firstQty ?? parseInt(form.qty) || 1),
       supplier: form.supplier.trim() || undefined,
       addedBy: isEdit ? (originalItem?.addedBy ?? auth?.name) : auth?.name,
-      linkedBarcodes: !isEdit && pendingLinked.length > 0 ? pendingLinked : (isEdit ? originalItem?.linkedBarcodes : undefined),
+      linkedBarcodes: !isEdit && pendingLinked.length > 1 ? pendingLinked.slice(1) : (isEdit ? originalItem?.linkedBarcodes : undefined),
       editedBy: isEdit ? auth?.name : undefined,
       img: imgUrl,
     };
@@ -1189,48 +1165,88 @@ export default function FolderDetailScreen() {
                 </Text>
               </View>
 
-              {/* الكمية */}
-              <TextInput
-                ref={qtyRef}
-                style={styles.formInput}
-                value={form.qty}
-                onChangeText={(v) => f('qty', v.replace(/[^0-9-]/g, '').replace(/(?!^)-/g, ''))}
-                placeholder={editBarcode
-                  ? `أضف (+) أو نقص (-) — الحالية: ${app.stock[editBarcode]?.qty ?? 0}`
-                  : 'الكمية'}
-                placeholderTextColor={Colors.textMuted}
-                keyboardType="number-pad"
-                returnKeyType="done"
-              />
+              {/* قائمة الباركودات مع الكمية */}
+              {!editBarcode && (
+                <View style={{ marginTop: 4 }}>
+                  <Text style={[styles.fieldLabel, { fontSize: 11, marginBottom: 6 }]}>📋 الباركودات والكميات</Text>
 
-              {/* باركودات مرتبطة — إضافة وتعديل */}
-              <View style={{ marginTop: 4 }}>
-                <Text style={[styles.fieldLabel, { fontSize: 11, marginBottom: 4 }]}>🔗 باركودات مرتبطة</Text>
-                {(editBarcode ? (app.stock[editBarcode]?.linkedBarcodes ?? []) : pendingLinked).map((lb, i) => (
-                  <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  {pendingLinked.map((lb, i) => (
+                    <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6, backgroundColor: '#f8fafc', borderRadius: 10, padding: 8, borderWidth: 1, borderColor: i === 0 ? '#5c67f2' : '#e2e8f0' }}>
+                      {i === 0 && <Text style={{ fontSize: 9, color: '#5c67f2', fontWeight: '900', position: 'absolute', top: 2, right: 8 }}>رئيسي</Text>}
+                      <TouchableOpacity
+                        style={{ backgroundColor: '#fee2e2', padding: 5, borderRadius: 6 }}
+                        onPress={() => setPendingLinked(p => p.filter((_, j) => j !== i))}
+                      >
+                        <Text style={{ color: '#dc2626', fontWeight: '900', fontSize: 12 }}>✕</Text>
+                      </TouchableOpacity>
+                      <Text style={{ flex: 1, fontSize: 12, color: '#1e293b', fontWeight: '700' }}>{lb.bc}</Text>
+                      <TouchableOpacity
+                        style={{ backgroundColor: '#fee2e2', width: 26, height: 26, borderRadius: 6, alignItems: 'center', justifyContent: 'center' }}
+                        onPress={() => setPendingLinked(p => p.map((l, j) => j === i ? { ...l, qty: Math.max(1, l.qty - 1) } : l))}
+                      >
+                        <Text style={{ color: '#dc2626', fontWeight: '900' }}>−</Text>
+                      </TouchableOpacity>
+                      <Text style={{ fontSize: 14, fontWeight: '900', color: '#1e293b', minWidth: 20, textAlign: 'center' }}>{lb.qty}</Text>
+                      <TouchableOpacity
+                        style={{ backgroundColor: '#dcfce7', width: 26, height: 26, borderRadius: 6, alignItems: 'center', justifyContent: 'center' }}
+                        onPress={() => setPendingLinked(p => p.map((l, j) => j === i ? { ...l, qty: l.qty + 1 } : l))}
+                      >
+                        <Text style={{ color: '#16a34a', fontWeight: '900' }}>+</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+
+                  {/* سكان + يدوي */}
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
                     <TouchableOpacity
-                      style={{ backgroundColor: '#fee2e2', padding: 6, borderRadius: 8 }}
-                      onPress={() => {
-                        if (editBarcode) {
-                          updateApp(prev => ({ ...prev, stock: { ...prev.stock, [editBarcode]: { ...prev.stock[editBarcode], linkedBarcodes: (prev.stock[editBarcode].linkedBarcodes ?? []).filter((_, j) => j !== i) } } }));
-                        } else {
-                          setPendingLinked(p => p.filter((_, j) => j !== i));
-                        }
-                      }}
+                      style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, backgroundColor: '#eff6ff', borderRadius: 10, borderWidth: 1, borderColor: '#93c5fd' }}
+                      onPress={() => { bcScannedRef.current = false; setShowBcScanner(true); }}
                     >
-                      <Text style={{ color: '#dc2626', fontWeight: '900' }}>✕</Text>
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: '#3b82f6' }}>📷 سكان</Text>
                     </TouchableOpacity>
-                    <Text style={{ flex: 1, fontSize: 13, color: '#1e293b' }}>{lb.bc}</Text>
-                    <Text style={{ fontSize: 13, color: '#5c67f2', fontWeight: '700' }}>{lb.qty} قطعة</Text>
+                    <View style={{ flex: 1, flexDirection: 'row', gap: 4 }}>
+                      <TextInput
+                        style={[styles.formInput, { flex: 1, fontSize: 12, padding: 8 }]}
+                        value={manualBcInput}
+                        onChangeText={setManualBcInput}
+                        placeholder="كود يدوي"
+                        placeholderTextColor={Colors.textMuted}
+                        keyboardType="numeric"
+                      />
+                      <TouchableOpacity
+                        style={{ backgroundColor: '#5c67f2', paddingHorizontal: 10, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }}
+                        onPress={() => {
+                          if (!manualBcInput.trim()) return;
+                          const existing = pendingLinked.find(l => l.bc === manualBcInput.trim());
+                          if (existing) {
+                            setPendingLinked(p => p.map(l => l.bc === manualBcInput.trim() ? { ...l, qty: l.qty + 1 } : l));
+                          } else {
+                            setPendingLinked(p => [...p, { bc: manualBcInput.trim(), qty: 1 }]);
+                            if (!form.barcode) f('barcode', manualBcInput.trim());
+                          }
+                          setManualBcInput('');
+                        }}
+                      >
+                        <Text style={{ color: '#fff', fontWeight: '900', fontSize: 18 }}>+</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                ))}
-                <TouchableOpacity
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: '#eff6ff', borderRadius: 10, borderWidth: 1, borderColor: '#93c5fd' }}
-                  onPress={() => { bcScannedRef.current = false; setShowBcScanner(true); }}
-                >
-                  <Text style={{ fontSize: 13, fontWeight: '800', color: '#3b82f6' }}>📷 سكان باركود للربط</Text>
-                </TouchableOpacity>
-              </View>
+                </View>
+              )}
+
+              {/* الكمية — فقط في وضع التعديل */}
+              {editBarcode && (
+                <TextInput
+                  ref={qtyRef}
+                  style={styles.formInput}
+                  value={form.qty}
+                  onChangeText={(v) => f('qty', v.replace(/[^0-9-]/g, '').replace(/(?!^)-/g, ''))}
+                  placeholder={`أضف (+) أو نقص (-) — الحالية: ${app.stock[editBarcode]?.qty ?? 0}`}
+                  placeholderTextColor={Colors.textMuted}
+                  keyboardType="number-pad"
+                  returnKeyType="done"
+                />
+              )}
 
               {/* المورد */}
               <View style={{ flexDirection: 'column-reverse' }}>
