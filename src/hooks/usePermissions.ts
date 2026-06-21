@@ -3,7 +3,7 @@ import { useAppStore } from '../store/appStore';
 export function usePermissions() {
   const auth = useAppStore((s) => s.auth);
   const users = useAppStore((s) => s.app.users);
-  const role = auth?.role ?? 'view';
+  const role = auth?.role ?? 'staff';
 
   const isPransibal      = !!(auth?.phone && users[auth.phone]?.isSuperAdmin);
   const canEditStock      = !!(auth?.phone && users[auth.phone]?.permissions?.canEditStock);
@@ -16,7 +16,6 @@ export function usePermissions() {
   const isSuper = role === 'super_admin';
   const isAdmin = role === 'admin' || isSuper;
   const isStaff = role === 'staff';
-  const isView  = role === 'view';
 
   return {
     role,
@@ -24,11 +23,11 @@ export function usePermissions() {
     isSuper,
     isAdmin,
     isStaff,
-    isView,
+    isView: false,
 
     // ───── الستوك ─────
-    canSell:          !isView,
-    canReturn:        !isView,
+    canSell:          true,
+    canReturn:        true,
     canAddProduct:    isAdmin,
     canEditProduct:   isAdmin || canEditStock,
     canDeleteDirect:  false,
@@ -39,8 +38,8 @@ export function usePermissions() {
     canAddCustomer:   isAdmin,
     canEditCustomer:  isSuper || canEditCredit,
     canDeleteCustomer: isPransibal,
-    canRecordZaad:    !isView,
-    canRecordPayment: isAdmin,    // نقود: admin+ فقط
+    canRecordZaad:    true,
+    canRecordPayment: isAdmin,
 
     // ───── الموردين ─────
     canViewSuppliers:       isPransibal || canViewSuppliersPerm,
@@ -51,7 +50,7 @@ export function usePermissions() {
     canManageChecks:        isPransibal || canViewSuppliersPerm,
 
     // ───── الإصلاح ─────
-    canRegisterRepair: !isView,
+    canRegisterRepair: true,
     canEditRepair:     isAdmin || canEditRepair,
     canCancelRepair:   isPransibal,
 

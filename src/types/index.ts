@@ -1,4 +1,4 @@
-export type UserRole = 'super_admin' | 'admin' | 'staff' | 'view' | 'demo';
+export type UserRole = 'super_admin' | 'admin' | 'staff';
 
 export interface UserPermissions {
   canEditStock?:      boolean;

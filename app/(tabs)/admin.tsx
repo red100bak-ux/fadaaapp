@@ -18,27 +18,21 @@ import AppHeader from '../../src/components/AppHeader';
 import { usePermissions } from '../../src/hooks/usePermissions';
 import type { AppUser, UserRole, AdminButtonType } from '../../src/types';
 
-const ROLES: UserRole[] = ['view', 'staff', 'admin', 'super_admin', 'demo'];
+const ROLES: UserRole[] = ['staff', 'admin', 'super_admin'];
 const ROLE_LABEL: Record<string, string> = {
   super_admin: 'سوبر أدمين',
   admin: 'أدمين',
   staff: 'مساعد',
-  view: 'عرض فقط',
-  demo: '🎭 عرض تجريبي',
 };
 const ROLE_DOT: Record<string, string> = {
   super_admin: '#16a34a',
   admin: '#7c3aed',
   staff: '#f59e0b',
-  view: '#ec4899',
-  demo: '#f59e0b',
 };
 const ROLE_COLOR: Record<UserRole, string> = {
   super_admin: Colors.primary,
   admin: Colors.success,
   staff: Colors.textMuted,
-  view: '#ec4899',
-  demo: '#f59e0b',
 };
 function canEdit(role: string) {
   return role === 'admin' || role === 'super_admin';

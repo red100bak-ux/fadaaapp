@@ -199,7 +199,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   sync: () => {
-    if (get().auth?.role === 'demo') return;
     const { todaySales, archiveSales, activityLog, ...core } = get().app;
     saveMasterData(core);
   },
@@ -208,11 +207,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const prev = get().app;
     const next = updater(prev);
 
-    // Demo mode — local only, no Firebase
-    if (get().auth?.role === 'demo') {
-      set({ app: ensureAppStructure(next) });
-      return;
-    }
     const { todaySales, archiveSales, activityLog, ...core } = next;
 
     const curMk = currentMonthKey();
@@ -261,12 +255,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   startListening: () => {
     get()._unsubs.forEach(u => u());
-
-    // Demo mode — empty local data, no Firebase at all
-    if (get().auth?.role === 'demo') {
-      set({ app: ensureAppStructure(EMPTY_APP), isLoaded: true, _core: {}, _months: {}, _unsubs: [] });
-      return;
-    }
 
     // Load local cache immediately for offline support
     AsyncStorage.getItem('fadaa_app_cache').then((raw) => {
@@ -403,7 +391,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   // Load specific months on demand (for year/archive views in report)
   ensureMonthsLoaded: async (monthKeys: string[]) => {
-    if (get().auth?.role === 'demo') return;
     const already  = get()._months;
     const toLoad   = monthKeys.filter(mk => !(mk in already));
     if (toLoad.length === 0) return;
