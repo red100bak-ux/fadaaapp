@@ -1326,7 +1326,7 @@ export default function AdminScreen() {
       {/* ═══ FAB سوبر أدمين ═══ */}
       {isPransibal && (
         <TouchableOpacity
-          style={{ position: 'absolute', bottom: 140, left: 20, width: 52, height: 52, borderRadius: 26, backgroundColor: '#1e293b', alignItems: 'center', justifyContent: 'center', elevation: 8, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }}
+          style={{ position: 'absolute', bottom: 90, left: 20, width: 52, height: 52, borderRadius: 26, backgroundColor: '#1e293b', alignItems: 'center', justifyContent: 'center', elevation: 8, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }}
           onPress={() => setPrivateFab(true)}
         >
           <Text style={{ color: '#fff', fontSize: 26, fontWeight: '300', lineHeight: 30 }}>+</Text>
