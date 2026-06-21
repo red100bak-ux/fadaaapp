@@ -1106,13 +1106,14 @@ export default function FolderDetailScreen() {
                 </TouchableOpacity>
               </Modal>
 
-              {/* باركود */}
+              {/* باركود رئيسي */}
+              <Text style={[styles.fieldLabel, { fontSize: 11, marginBottom: 4 }]}>📷 الباركود الرئيسي</Text>
               <View style={styles.barcodeRow}>
                 <TextInput
                   style={[styles.formInput, { flex: 1 }]}
                   value={form.barcode}
                   onChangeText={(v) => f('barcode', v)}
-                  placeholder="الباركود (اختياري)"
+                  placeholder="الباركود الرئيسي (اختياري)"
                   placeholderTextColor={Colors.textMuted}
                   keyboardType="numeric"
                   returnKeyType="next"

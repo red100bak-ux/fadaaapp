@@ -249,7 +249,7 @@ export default function AdminScreen() {
   const usersCount = Object.keys(app.users ?? {}).length;
 
   const users = Object.entries(app.users ?? {})
-    .filter(([k, u]) => !u.isSuperAdmin || k === auth?.phone)
+    .filter(([, u]) => !u.isSuperAdmin)
     .sort(([, a], [, b]) => (b.isSuperAdmin ? 1 : 0) - (a.isSuperAdmin ? 1 : 0));
   const pendingStock = Object.entries(app.stock ?? {}).filter(([, i]) => i.pendingDeletion);
 
@@ -834,7 +834,7 @@ export default function AdminScreen() {
               value={editPin} onChangeText={setEditPin} keyboardType="numeric" secureTextEntry maxLength={8}
             />
 
-            {isSuper && editingKey && (
+            {isSuper && editingKey && !app.users[editingKey]?.isSuperAdmin && (
               <>
                 <TouchableOpacity
                   style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, marginTop: 8, marginBottom: 4, borderRadius: 10, backgroundColor: '#fff7ed', paddingHorizontal: 12, borderWidth: 1.5, borderColor: '#f97316' }}
@@ -856,7 +856,7 @@ export default function AdminScreen() {
               </>
             )}
 
-            {isSuper && editingKey && (
+            {isSuper && editingKey && !app.users[editingKey]?.isSuperAdmin && (
               <>
                 <TouchableOpacity
                   style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, marginTop: 8, marginBottom: 4, borderRadius: 10, backgroundColor: '#f5f3ff', paddingHorizontal: 12, borderWidth: 1.5, borderColor: '#7c3aed' }}
@@ -885,7 +885,7 @@ export default function AdminScreen() {
               </>
             )}
 
-            {isPransibal && editingKey && (
+            {isPransibal && editingKey && !app.users[editingKey]?.isSuperAdmin && (
               <>
                 <TouchableOpacity
                   style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, marginTop: 8, marginBottom: 4, borderRadius: 10, backgroundColor: '#f0fdf4', paddingHorizontal: 12, borderWidth: 1.5, borderColor: '#16a34a' }}
