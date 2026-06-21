@@ -373,7 +373,7 @@ export default function FolderDetailScreen() {
       cat: form.cat || folder!.name,
       sell: parseFloat(form.sell) || 0,
       buy: parseFloat(form.buy) || 0,
-      qty: isEdit ? Math.max(0, (originalItem?.qty ?? 0) + (parseInt(form.qty) || 0)) : Math.max(1, firstQty ?? parseInt(form.qty) || 1),
+      qty: isEdit ? Math.max(0, (originalItem?.qty ?? 0) + (parseInt(form.qty) || 0)) : Math.max(1, (firstQty ?? parseInt(form.qty)) || 1),
       supplier: form.supplier.trim() || undefined,
       addedBy: isEdit ? (originalItem?.addedBy ?? auth?.name) : auth?.name,
       linkedBarcodes: !isEdit && pendingLinked.length > 1 ? pendingLinked.slice(1) : (isEdit ? originalItem?.linkedBarcodes : undefined),
