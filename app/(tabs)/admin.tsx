@@ -121,12 +121,6 @@ export default function AdminScreen() {
   });
   const [bellTab, setBellTab] = useState<'alerts' | 'log'>('alerts');
   const [readAlerts, setReadAlerts] = useState<string[]>([]);
-
-  useEffect(() => {
-    AsyncStorage.getItem('fadaa_read_alerts').then(raw => {
-      if (raw) setReadAlerts(JSON.parse(raw));
-    }).catch(() => {});
-  }, []);
   const [search, setSearch] = useState('');
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [cloudBackups, setCloudBackups] = useState<CloudBackup[]>(() => app.cloudBackups ?? []);
@@ -150,6 +144,12 @@ export default function AdminScreen() {
   const [newPin, setNewPin] = useState('');
   const [newRole, setNewRole] = useState<UserRole>('staff');
   const [newColor, setNewColor] = useState(Colors.primary);
+
+  useEffect(() => {
+    AsyncStorage.getItem('fadaa_read_alerts').then(raw => {
+      if (raw) setReadAlerts(JSON.parse(raw));
+    }).catch(() => {});
+  }, []);
 
   // الإدارة: طلبات الحذف + شيكات + رواتب + ديون موردين
   const notifications = useMemo(() => {

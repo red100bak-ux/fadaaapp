@@ -11,7 +11,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useAppStore } from '../../src/store/appStore';
 import { Colors, Radii, Shadow } from '../../src/theme/colors';
-import { getFolderColor, getItemsForFolder, makeSaleRecord, generateId, formatMAD, nowDate } from '../../src/utils/helpers';
+import { getFolderColor, getItemsForFolder, makeSaleRecord, generateId, formatMAD, nowDate, getTotalQty } from '../../src/utils/helpers';
 import { sendNow } from '../../src/utils/notificationService';
 import { logActivity } from '../../src/utils/activityLogger';
 import AppHeader from '../../src/components/AppHeader';
@@ -128,7 +128,7 @@ export default function FolderDetailScreen() {
 
   const ARCHIVE_CATS = ['جديد', 'مستعمل'];
   const isArchiveCat = ARCHIVE_CATS.includes(folder?.name ?? '');
-  const isClickFolder = folder?.special === 'click';
+  const isClickFolder = folder?.special === 'click' || folder?.name === 'CLICK';
 
   const filtered = useMemo(() => {
     const active = isArchiveCat
@@ -262,6 +262,35 @@ export default function FolderDetailScreen() {
     if (bcScannedRef.current) return;
     bcScannedRef.current = true;
     setShowBcScanner(false);
+
+    // إلا كنا في وضع التعديل → ربط باركود جديد
+    if (editBarcode && data !== editBarcode) {
+      const existing = app.stock[editBarcode];
+      const alreadyLinked = existing?.linkedBarcodes?.find(l => l.bc === data);
+      if (alreadyLinked) {
+        setAppAlert({ icon: 'ℹ️', title: 'مربوط بالفعل', message: `${data} مربوط بالفعل`, buttons: [{ label: 'حسناً', onPress: () => setAppAlert(null), primary: true }] });
+        return;
+      }
+      if (app.stock[data] && app.stock[data].name !== existing?.name) {
+        setAppAlert({ icon: '⚠️', title: 'منتج آخر', message: `هاد الباركود مربوط بـ "${app.stock[data].name}"`, buttons: [{ label: 'حسناً', onPress: () => setAppAlert(null), primary: true }] });
+        return;
+      }
+      const linkedQty = app.stock[data]?.qty ?? 1;
+      updateApp(prev => ({
+        ...prev,
+        stock: {
+          ...prev.stock,
+          [editBarcode]: {
+            ...prev.stock[editBarcode],
+            linkedBarcodes: [...(prev.stock[editBarcode].linkedBarcodes ?? []), { bc: data, qty: linkedQty }],
+          },
+        },
+      }));
+      setAppAlert({ icon: '✅', title: 'تم الربط', message: `${data} مربوط — ${linkedQty} قطعة`, buttons: [{ label: 'حسناً', onPress: () => setAppAlert(null), primary: true }] });
+      return;
+    }
+
+    // وضع الإضافة العادي
     f('barcode', data);
     const existing = app.stock[data];
     if (existing) {
@@ -515,7 +544,9 @@ export default function FolderDetailScreen() {
           <TouchableOpacity
             style={[styles.itemCard, item.pendingDeletion && styles.itemPending]}
             onPress={() => {
-              if (!item.pendingDeletion && (isClickFolder || perm.isPransibal)) {
+              if (!item.pendingDeletion && isClickFolder) {
+                setClickActionItem({ bc, item });
+              } else if (!item.pendingDeletion && perm.isPransibal) {
                 setClickActionItem({ bc, item });
               } else {
                 item.soldAt ? setSoldDetail({ bc, item }) : setItemDetail({ bc, item });
@@ -540,9 +571,9 @@ export default function FolderDetailScreen() {
                   <View style={[styles.qtyBadge, { backgroundColor: '#fef2f2' }]}>
                     <Text style={[styles.qtyTxt, { color: '#ef4444' }]}>مباع</Text>
                   </View>
-                ) : item.qty > 0 ? (
-                  <View style={[styles.qtyBadge, { backgroundColor: item.qty <= 2 ? Colors.dangerLight : '#dcfce7' }]}>
-                    <Text style={[styles.qtyTxt, { color: item.qty <= 2 ? Colors.danger : '#16a34a' }]}>{item.qty}</Text>
+                ) : getTotalQty(item) > 0 ? (
+                  <View style={[styles.qtyBadge, { backgroundColor: getTotalQty(item) <= 2 ? Colors.dangerLight : '#dcfce7' }]}>
+                    <Text style={[styles.qtyTxt, { color: getTotalQty(item) <= 2 ? Colors.danger : '#16a34a' }]}>{getTotalQty(item)}</Text>
                   </View>
                 ) : null}
                 <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
@@ -622,9 +653,9 @@ export default function FolderDetailScreen() {
 
 
       {/* زر إضافة منتج — Admin فقط */}
-      {perm.canAddProduct && !isClickFolder && (
+      {(perm.canAddProduct || isClickFolder) && (
         <TouchableOpacity
-          style={{ position: 'absolute', bottom: 90, left: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: '#5c67f2', alignItems: 'center', justifyContent: 'center', elevation: 6, shadowColor: '#5c67f2', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }}
+          style={{ position: 'absolute', bottom: 100, left: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: isClickFolder ? '#10b981' : '#5c67f2', alignItems: 'center', justifyContent: 'center', elevation: 20, zIndex: 999, shadowColor: '#5c67f2', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }}
           onPress={openAdd}
           activeOpacity={0.85}
         >
@@ -653,14 +684,20 @@ export default function FolderDetailScreen() {
               <TouchableOpacity
                 style={{ backgroundColor: '#f97316', paddingVertical: 14, borderRadius: 14, alignItems: 'center' }}
                 onPress={() => {
-                  setClickActionItem(null);
                   const { bc, item } = clickActionItem;
-                  updateApp(prev => ({
-                    ...prev,
-                    stock: { ...prev.stock, [bc]: { ...item, qty: item.qty + 1 } },
-                    todaySales: [...prev.todaySales, { nid: `ret_${Date.now()}`, name: item.name, sell: -(item.sell), buy: -(item.buy), cat: item.cat, seller: auth?.name ?? '', time: new Date().toLocaleTimeString('fr-MA', { hour: '2-digit', minute: '2-digit' }), dateString: new Date().toLocaleDateString('fr-MA', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '/'), monthKey: `${new Date().getFullYear()}_${String(new Date().getMonth() + 1).padStart(2, '0')}`, yearKey: String(new Date().getFullYear()) }],
-                  }));
-                  logActivity('return', `↩️ رجع: ${item.name}`, auth?.name ?? '', item.sell);
+                  setClickActionItem(null);
+                  setAppAlert({ icon: '↩️', title: 'تأكيد الروتور', message: `رجع "${item.name}" للستوك؟`, buttons: [
+                    { label: 'إلغاء', onPress: () => setAppAlert(null) },
+                    { label: '✅ تأكيد', primary: true, onPress: () => {
+                      setAppAlert(null);
+                      updateApp(prev => ({
+                        ...prev,
+                        stock: { ...prev.stock, [bc]: { ...item, qty: item.qty + 1 } },
+                        todaySales: [...prev.todaySales, { nid: `ret_${Date.now()}`, name: item.name, sell: -(item.sell), buy: -(item.buy), cat: item.cat, seller: auth?.name ?? '', time: new Date().toLocaleTimeString('fr-MA', { hour: '2-digit', minute: '2-digit' }), dateString: new Date().toLocaleDateString('fr-MA', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '/'), monthKey: `${new Date().getFullYear()}_${String(new Date().getMonth() + 1).padStart(2, '0')}`, yearKey: String(new Date().getFullYear()) }],
+                      }));
+                      logActivity('return', `↩️ رجع: ${item.name}`, auth?.name ?? '', item.sell);
+                    }},
+                  ]});
                 }}
               >
                 <Text style={{ color: '#fff', fontSize: 15, fontWeight: '900' }}>↩️ روتور — رجع للستوك</Text>
@@ -671,15 +708,21 @@ export default function FolderDetailScreen() {
                 <TouchableOpacity
                   style={{ backgroundColor: '#dc2626', paddingVertical: 14, borderRadius: 14, alignItems: 'center' }}
                   onPress={() => {
-                    setClickActionItem(null);
                     const { bc, item } = clickActionItem;
-                    const newQty = item.qty - 1;
-                    updateApp(prev => ({
-                      ...prev,
-                      stock: { ...prev.stock, [bc]: { ...item, qty: newQty } },
-                      todaySales: [...prev.todaySales, { nid: `loss_${Date.now()}`, name: `🗑️ خسرة: ${item.name}`, sell: 0, buy: item.buy, cat: item.cat, seller: auth?.name ?? '', time: new Date().toLocaleTimeString('fr-MA', { hour: '2-digit', minute: '2-digit' }), dateString: new Date().toLocaleDateString('fr-MA', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '/'), monthKey: `${new Date().getFullYear()}_${String(new Date().getMonth() + 1).padStart(2, '0')}`, yearKey: String(new Date().getFullYear()) }],
-                    }));
-                    logActivity('expense', `💸 خسرة: ${item.name} — ${item.buy} د`, auth?.name ?? '', item.buy);
+                    setClickActionItem(null);
+                    setAppAlert({ icon: '💸', title: 'تأكيد الخسرة', message: `تسجيل خسرة "${item.name}" — ${item.buy} د؟`, buttons: [
+                      { label: 'إلغاء', onPress: () => setAppAlert(null) },
+                      { label: '✅ تأكيد', primary: true, onPress: () => {
+                        setAppAlert(null);
+                        const newQty = item.qty - 1;
+                        updateApp(prev => ({
+                          ...prev,
+                          stock: { ...prev.stock, [bc]: { ...item, qty: newQty } },
+                          todaySales: [...prev.todaySales, { nid: `loss_${Date.now()}`, name: `🗑️ خسرة: ${item.name}`, sell: 0, buy: item.buy, cat: item.cat, seller: auth?.name ?? '', time: new Date().toLocaleTimeString('fr-MA', { hour: '2-digit', minute: '2-digit' }), dateString: new Date().toLocaleDateString('fr-MA', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '/'), monthKey: `${new Date().getFullYear()}_${String(new Date().getMonth() + 1).padStart(2, '0')}`, yearKey: String(new Date().getFullYear()) }],
+                        }));
+                        logActivity('expense', `💸 خسرة: ${item.name} — ${item.buy} د`, auth?.name ?? '', item.buy);
+                      }},
+                    ]});
                   }}
                 >
                   <Text style={{ color: '#fff', fontSize: 15, fontWeight: '900' }}>💸 خسرة — {clickActionItem.item.buy} د</Text>
@@ -1139,9 +1182,45 @@ export default function FolderDetailScreen() {
                   ? `أضف (+) أو نقص (-) — الحالية: ${app.stock[editBarcode]?.qty ?? 0}`
                   : 'الكمية'}
                 placeholderTextColor={Colors.textMuted}
-                keyboardType="numbers-and-punctuation"
+                keyboardType="number-pad"
                 returnKeyType="done"
               />
+
+              {/* باركودات مرتبطة — فقط عند التعديل */}
+              {editBarcode && (
+                <View style={{ marginTop: 4 }}>
+                  <Text style={[styles.fieldLabel, { fontSize: 11, marginBottom: 4 }]}>🔗 باركودات مرتبطة</Text>
+                  {(app.stock[editBarcode]?.linkedBarcodes ?? []).map((lb, i) => (
+                    <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <TouchableOpacity
+                        style={{ backgroundColor: '#fee2e2', padding: 6, borderRadius: 8 }}
+                        onPress={() => {
+                          updateApp(prev => ({
+                            ...prev,
+                            stock: {
+                              ...prev.stock,
+                              [editBarcode]: {
+                                ...prev.stock[editBarcode],
+                                linkedBarcodes: (prev.stock[editBarcode].linkedBarcodes ?? []).filter((_, j) => j !== i),
+                              },
+                            },
+                          }));
+                        }}
+                      >
+                        <Text style={{ color: '#dc2626', fontWeight: '900' }}>✕</Text>
+                      </TouchableOpacity>
+                      <Text style={{ flex: 1, fontSize: 13, color: '#1e293b' }}>{lb.bc}</Text>
+                      <Text style={{ fontSize: 13, color: '#5c67f2', fontWeight: '700' }}>{lb.qty} قطعة</Text>
+                    </View>
+                  ))}
+                  <TouchableOpacity
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: '#eff6ff', borderRadius: 10, borderWidth: 1, borderColor: '#93c5fd' }}
+                    onPress={() => setShowBcScanner(true)}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: '#3b82f6' }}>📷 سكان باركود جديد للربط</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
 
               {/* المورد */}
               <View style={{ flexDirection: 'column-reverse' }}>

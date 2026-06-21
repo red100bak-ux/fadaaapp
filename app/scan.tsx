@@ -249,11 +249,23 @@ export default function ScanScreen() {
     Vibration.vibrate(60);
 
     const bc = data.trim();
-    const item = app.stock?.[bc];
+    let item = app.stock?.[bc];
+    let mainBc = bc;
+    // البحث في linkedBarcodes إلا ما كانش الباركود رئيسياً
+    if (!item) {
+      for (const [stockBc, stockItem] of Object.entries(app.stock ?? {})) {
+        const linked = stockItem.linkedBarcodes?.find(l => l.bc === bc);
+        if (linked) {
+          item = stockItem;
+          mainBc = stockBc;
+          break;
+        }
+      }
+    }
 
     if (scanMode === 'info') {
       if (item) {
-        setFound({ bc, item });
+        setFound({ bc: mainBc, item });
       } else {
         showAlert('🔍', 'ما لقاتاش', 'هاد السلعة ما كاينة في الستوك', [
           { label: 'إلغاء', onPress: () => { setAlertModal(null); router.back(); } },
@@ -269,12 +281,12 @@ export default function ScanScreen() {
         const newQty = item.qty + 1;
         updateApp((prev) => ({
           ...prev,
-          stock: { ...prev.stock, [bc]: { ...item, qty: newQty } },
+          stock: { ...prev.stock, [mainBc]: { ...item, qty: newQty } },
         }));
         logActivity('add_stock', `📦 زاد: ${item.name} (+1 — باقي: ${newQty})`, auth?.name ?? '');
         showAlert('✅', `+1 — ${item.name}`, `الكمية الجديدة: ${newQty}`, [
           { label: 'عاود سكان', onPress: () => { setAlertModal(null); setScanned(false); }, primary: true },
-          { label: 'تعديل', onPress: () => { setAlertModal(null); setFound({ bc, item: { ...item, qty: newQty } }); } },
+          { label: 'تعديل', onPress: () => { setAlertModal(null); setFound({ bc: mainBc, item: { ...item, qty: newQty } }); } },
         ]);
       } else {
         setManualCode(bc);
@@ -303,13 +315,13 @@ export default function ScanScreen() {
         ]);
         return;
       }
-      setFound({ bc, item });
-      setReturnConfirm({ bc, item });
+      setFound({ bc: mainBc, item });
+      setReturnConfirm({ bc: mainBc, item });
       return;
     }
 
     if (item) {
-      setFound({ bc, item });
+      setFound({ bc: mainBc, item });
       if (scanMode === 'sell') {
         if (item.soldAt) {
           showAlert('📵', 'مباع', `${item.name}\nبيع بتاريخ: ${item.soldAt}${item.soldBy ? `\nمن طرف: ${item.soldBy}` : ''}`, [

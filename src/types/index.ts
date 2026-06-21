@@ -21,6 +21,11 @@ export interface AppUser {
   allowedAdminButtons?: string[];
 }
 
+export interface LinkedBarcode {
+  bc: string;
+  qty: number;
+}
+
 export interface StockItem {
   name: string;
   cat: string;
@@ -35,6 +40,7 @@ export interface StockItem {
   deletionRequestedBy?: string;
   soldAt?: string;
   soldBy?: string;
+  linkedBarcodes?: LinkedBarcode[];
 }
 
 export interface CreditLog {

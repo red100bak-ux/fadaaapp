@@ -66,6 +66,11 @@ export function formatMAD(n: number): string {
   return n.toLocaleString('fr-MA') + ' د';
 }
 
+export function getTotalQty(item: { qty: number; linkedBarcodes?: { bc: string; qty: number }[] }): number {
+  const linked = (item.linkedBarcodes ?? []).reduce((s, l) => s + (l.qty || 0), 0);
+  return (item.qty || 0) + linked;
+}
+
 export function normalizeMonthKey(mk: string): string {
   if (!mk) return mk;
   const m = mk.match(/^(\d{4})-(\d{1,2})$/);

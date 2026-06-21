@@ -50,6 +50,15 @@ export default function RootLayout() {
           initFirebase(),
           new Promise<void>(r => setTimeout(r, 4000)),
         ]);
+        // إلا التطبيق كان مغلق أكثر من 60 ثانية → يمسح الجلسة ويطلب كود
+        const bgTs = await AsyncStorage.getItem('fadaa_bg_ts');
+        if (bgTs) {
+          const elapsed = Date.now() - parseInt(bgTs, 10);
+          if (elapsed >= LOCK_TIMEOUT) {
+            await AsyncStorage.removeItem('fadaa_auth');
+            await AsyncStorage.removeItem('fadaa_bg_ts');
+          }
+        }
         await loadSavedAuth();
         startListening();
         try {
@@ -69,7 +78,9 @@ export default function RootLayout() {
     const handleAppState = (nextState: AppStateStatus) => {
       if (nextState === 'background' || nextState === 'inactive') {
         bgTimestamp.current = Date.now();
+        AsyncStorage.setItem('fadaa_bg_ts', String(Date.now())).catch(() => {});
       } else if (nextState === 'active') {
+        AsyncStorage.removeItem('fadaa_bg_ts').catch(() => {});
         if (bgTimestamp.current !== null) {
           const elapsed = Date.now() - bgTimestamp.current;
           if (elapsed >= LOCK_TIMEOUT && useAppStore.getState().auth) {

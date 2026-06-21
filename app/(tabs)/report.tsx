@@ -15,8 +15,8 @@ type Filter = 'today' | 'week' | 'month' | 'year' | 'archive';
 const MAIN_TABS: { key: Filter; label: string }[] = [
   { key: 'today',   label: 'اليوم' },
   { key: 'week',    label: 'الأسبوع' },
-  { key: 'month',   label: '🌙 الشهر' },
-  { key: 'year',    label: '👑 السنة' },
+  { key: 'month',   label: 'الشهر 🌙' },
+  { key: 'year',    label: 'السنة 👑' },
 ];
 
 function parseDate(dateStr: string): Date {

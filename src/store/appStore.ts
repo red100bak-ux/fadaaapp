@@ -31,14 +31,14 @@ function prevMonthKey(): string {
   const now = new Date();
   let m = now.getMonth(); // 0-indexed
   let y = now.getFullYear();
-  if (m === 0) { m = 12; y--; } else {}
+  if (m === 0) { m = 12; y--; }
   return `${y}_${String(m).padStart(2, '0')}`;
 }
 
 function monthKeyFromDate(dateStr: string): string {
   // "DD/MM/YYYY" → "YYYY_MM"
   const parts = (dateStr ?? '').split('/');
-  if (parts.length === 3) return `${parts[2]}_${parts[1]}`;
+  if (parts.length === 3 && parts[2] && parts[1]) return `${parts[2]}_${parts[1].padStart(2, '0')}`;
   return currentMonthKey();
 }
 
@@ -456,6 +456,11 @@ function ensureAppStructure(data: Partial<AppData>): AppData {
   if (!base.monthlyIncome)  base.monthlyIncome  = {};
   if (!base.resetPin)       base.resetPin       = '0000';
   if (!base.folders || base.folders.length === 0) base.folders = DEFAULT_FOLDERS;
+  // تأكد أن مجلد CLICK موجود مع special: 'click'
+  if (base.folders && !base.folders.find((f: any) => f.special === 'click')) {
+    const clickFolder = DEFAULT_FOLDERS.find(f => f.special === 'click');
+    if (clickFolder) base.folders = [...base.folders, clickFolder];
+  }
   if (!base.activityLog)    base.activityLog    = [];
   return base as AppData;
 }
