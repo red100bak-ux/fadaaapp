@@ -1142,7 +1142,7 @@ export default function AdminScreen() {
                               {entry.amount !== undefined && <Text style={[styles.bellCardAmount, { color: card.badge }]}>{entry.amount} د</Text>}
                               {!!entry.by?.trim() && (
                                 <View style={[styles.bellUserBadge, { backgroundColor: userColor }]}>
-                                  <Text style={[styles.bellUserTxt, { color: '#fff' }]}>👤 {entry.by}</Text>
+                                  <Text style={[styles.bellUserTxt, { color: contrastText(userColor) }]}>👤 {entry.by}</Text>
                                 </View>
                               )}
                             </View>

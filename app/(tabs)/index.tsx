@@ -486,7 +486,7 @@ export default function StockScreen() {
                           )}
                           {!!entry.by?.trim() && (
                             <View style={[styles.bellUserBadge, { backgroundColor: userColor, flexShrink: 0 }]}>
-                              <Text style={[styles.bellUserTxt, { color: '#fff' }]}>👤 {entry.by}</Text>
+                              <Text style={[styles.bellUserTxt, { color: contrastText(userColor) }]}>👤 {entry.by}</Text>
                             </View>
                           )}
                         </View>
