@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAppStore } from '../../src/store/appStore';
-import { formatMAD, nowDate } from '../../src/utils/helpers';
+import { formatMAD, nowDate, contrastText } from '../../src/utils/helpers';
 import { logActivity } from '../../src/utils/activityLogger';
 import AppHeader from '../../src/components/AppHeader';
 import { usePermissions } from '../../src/hooks/usePermissions';
@@ -29,6 +29,11 @@ export default function CustomerDetailScreen() {
   const [mode, setMode] = useState<Mode>('zaad');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
+
+  // تعديل عملية
+  const [editIdx, setEditIdx] = useState<number | null>(null);
+  const [editAmount, setEditAmount] = useState('');
+  const [editNote, setEditNote] = useState('');
 
   if (!customer) {
     return (
@@ -77,6 +82,38 @@ export default function CustomerDetailScreen() {
     setNote('');
   }
 
+  function saveEdit() {
+    if (editIdx === null) return;
+    const val = parseFloat(editAmount);
+    if (!val || val <= 0) { Alert.alert('', 'أدخل مبلغ صحيح'); return; }
+    const logsOriginal = [...(customer.logs ?? [])];
+    const realIdx = logsOriginal.length - 1 - editIdx;
+    const oldLog = logsOriginal[realIdx];
+    const sign = oldLog.v > 0 ? 1 : -1;
+    const newVal = val * sign;
+    const diff = newVal - oldLog.v;
+    const updatedLog: CreditLog = {
+      ...oldLog,
+      v: newVal,
+      t: editNote || oldLog.t,
+    };
+    logsOriginal[realIdx] = updatedLog;
+    updateApp((prev) => ({
+      ...prev,
+      credit: {
+        ...prev.credit,
+        [customerId]: {
+          ...prev.credit[customerId],
+          total: (prev.credit[customerId].total || 0) + diff,
+          logs: logsOriginal,
+        },
+      },
+    }));
+    setEditIdx(null);
+    setEditAmount('');
+    setEditNote('');
+  }
+
   function sendWhatsApp() {
     const phone = customer?.phone?.replace(/[^0-9]/g, '') ?? '';
     if (!phone) { Alert.alert('', 'الزبون ليس عنده رقم هاتف'); return; }
@@ -104,6 +141,11 @@ export default function CustomerDetailScreen() {
     ]);
   }
 
+  function getUserColor(name?: string): string {
+    if (!name) return '#5c67f2';
+    return (Object.values(app.users ?? {}) as any[]).find(u => u.name === name)?.color ?? '#5c67f2';
+  }
+
   return (
     <SafeAreaView style={s.root}>
       <AppHeader
@@ -115,7 +157,7 @@ export default function CustomerDetailScreen() {
 
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
 
-        {/* Big debt card */}
+        {/* Big debt card — في الوسط */}
         <View style={s.debtCard}>
           <Text style={s.debtLabel}>كنتسالو الزبون:</Text>
           <Text style={[s.debtAmt, { color: debt === 0 ? '#2563eb' : debt > 0 ? '#dc2626' : '#10b981' }]}>
@@ -159,14 +201,41 @@ export default function CustomerDetailScreen() {
           ? <Text style={s.emptyTxt}>ما كاين حتى عملية</Text>
           : txns.map((log: CreditLog, i: number) => {
               const isDebit = log.v > 0;
+              const sellerColor = getUserColor(log.seller);
               return (
-                <View key={i} style={s.txRow}>
-                  <Text style={s.txDate}>{log.d}{log.seller ? ` · ${log.seller}` : ''}</Text>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    {log.t ? <Text style={s.txNote}>{log.t}</Text> : null}
+                <View key={i} style={[s.txRow, { borderRightWidth: 4, borderRightColor: isDebit ? '#ef4444' : '#10b981' }]}>
+                  <View style={{ flex: 1, gap: 6 }}>
+                    {/* اسم العملية */}
+                    {log.t ? (
+                      <Text style={[s.txNote, { color: isDebit ? '#dc2626' : '#059669', fontWeight: '800', fontSize: 13 }]}>
+                        {log.t}
+                      </Text>
+                    ) : null}
+                    {/* التاريخ + badge المستخدم */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <Text style={s.txDate}>{log.d}</Text>
+                      {!!log.seller && (
+                        <View style={{ backgroundColor: sellerColor, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 }}>
+                          <Text style={{ color: contrastText(sellerColor), fontSize: 11, fontWeight: '900' }}>
+                            👤 {log.seller}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                  {/* المبلغ + زر تعديل */}
+                  <View style={{ alignItems: 'flex-end', gap: 4 }}>
                     <Text style={[s.txAmt, { color: isDebit ? '#ef4444' : '#10b981' }]}>
                       {isDebit ? '+' : ''}{formatMAD(log.v)}
                     </Text>
+                    {perm.isAdmin && (
+                      <TouchableOpacity
+                        style={{ backgroundColor: '#f1f5f9', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 }}
+                        onPress={() => { setEditIdx(i); setEditAmount(String(Math.abs(log.v))); setEditNote(log.t ?? ''); }}
+                      >
+                        <Text style={{ fontSize: 11, color: '#5c67f2', fontWeight: '800' }}>✏️ تعديل</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </View>
               );
@@ -182,8 +251,6 @@ export default function CustomerDetailScreen() {
             <Text style={s.sheetTitle}>
               {mode === 'zaad' ? '🛒 زاد (كريدي)' : '💰 سداد'}
             </Text>
-
-            {/* Mode toggle */}
             <View style={s.modeRow}>
               <TouchableOpacity
                 style={[s.modeBtn, mode === 'zaad' && { backgroundColor: '#fee2e2', borderColor: '#ef4444' }]}
@@ -198,7 +265,6 @@ export default function CustomerDetailScreen() {
                 <Text style={[s.modeTxt, mode === 'payment' && { color: '#10b981' }]}>💰 سداد</Text>
               </TouchableOpacity>
             </View>
-
             <TextInput
               style={s.inp}
               placeholder="المبلغ (د) *"
@@ -229,6 +295,39 @@ export default function CustomerDetailScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Edit entry modal */}
+      <Modal visible={editIdx !== null} transparent animationType="slide" onRequestClose={() => setEditIdx(null)}>
+        <KeyboardAvoidingView style={s.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={s.sheetBox}>
+            <Text style={s.sheetTitle}>✏️ تعديل العملية</Text>
+            <TextInput
+              style={s.inp}
+              placeholder="المبلغ الجديد (د) *"
+              placeholderTextColor="#9ca3af"
+              value={editAmount}
+              onChangeText={setEditAmount}
+              keyboardType="numeric"
+              autoFocus
+            />
+            <TextInput
+              style={[s.inp, { marginTop: 10 }]}
+              placeholder="الوصف..."
+              placeholderTextColor="#9ca3af"
+              value={editNote}
+              onChangeText={setEditNote}
+            />
+            <View style={s.btns}>
+              <TouchableOpacity style={s.cancelBtn} onPress={() => setEditIdx(null)}>
+                <Text style={s.cancelTxt}>إلغاء</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.confirmBtn, { backgroundColor: '#5c67f2' }]} onPress={saveEdit}>
+                <Text style={s.confirmTxt}>حفظ</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -241,14 +340,14 @@ const s = StyleSheet.create({
 
   debtCard: {
     backgroundColor: GOLD_LIGHT, borderRadius: 14, padding: 10,
-    marginBottom: 10, alignItems: 'flex-end',
+    marginBottom: 10, alignItems: 'center',
     borderWidth: 1, borderColor: GOLD_BDR,
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
   },
-  debtLabel: { fontSize: 19, fontWeight: '800', color: GOLD, textAlign: 'right' },
-  debtAmt:   { fontSize: 26, fontWeight: '900', textAlign: 'right' },
-  debtSub:   { fontSize: 10, color: '#94a3b8', marginTop: 3, fontWeight: '600', textAlign: 'right' },
+  debtLabel: { fontSize: 19, fontWeight: '800', color: GOLD, textAlign: 'center' },
+  debtAmt:   { fontSize: 32, fontWeight: '900', textAlign: 'center' },
+  debtSub:   { fontSize: 10, color: '#94a3b8', marginTop: 3, fontWeight: '600', textAlign: 'center' },
 
   actionRow: { flexDirection: 'row', gap: 12, marginBottom: 10, justifyContent: 'center' },
   actionRed: {
@@ -270,7 +369,7 @@ const s = StyleSheet.create({
 
   secTitle: {
     fontSize: 14, fontWeight: '800', color: '#1e293b',
-    textAlign: 'left', marginBottom: 10, marginTop: 6,
+    textAlign: 'right', marginBottom: 10, marginTop: 6,
   },
   emptyTxt: { fontSize: 14, color: '#94a3b8', fontWeight: '700', textAlign: 'center', paddingVertical: 24 },
 
@@ -280,22 +379,22 @@ const s = StyleSheet.create({
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
   },
-  txDate: { fontSize: 12, color: '#94a3b8', fontWeight: '600', flex: 1, textAlign: 'left' },
-  txNote: { fontSize: 12, color: '#64748b', marginBottom: 2, textAlign: 'left', fontWeight: '600' },
-  txAmt:  { fontSize: 18, fontWeight: '900', textAlign: 'left' },
+  txDate: { fontSize: 11, color: '#94a3b8', fontWeight: '600' },
+  txNote: { fontSize: 12, color: '#64748b', marginBottom: 2, fontWeight: '600' },
+  txAmt:  { fontSize: 18, fontWeight: '900' },
 
   overlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.6)', justifyContent: 'flex-end' },
   sheetBox: {
     backgroundColor: '#fff', borderTopLeftRadius: 26, borderTopRightRadius: 26,
     padding: 24, paddingBottom: 44,
   },
-  sheetTitle: { fontSize: 17, fontWeight: '900', color: '#1e293b', textAlign: 'left', marginBottom: 16, width: '100%' },
+  sheetTitle: { fontSize: 17, fontWeight: '900', color: '#1e293b', textAlign: 'right', marginBottom: 16, width: '100%' },
   modeRow:   { flexDirection: 'row', gap: 10, marginBottom: 16 },
   modeBtn: {
     flex: 1, padding: 12, borderRadius: 14, alignItems: 'center',
     borderWidth: 2, borderColor: '#e2e8f0', backgroundColor: '#f8fafc',
   },
-  modeTxt: { fontSize: 14, fontWeight: '800', color: '#94a3b8', textAlign: 'left' },
+  modeTxt: { fontSize: 14, fontWeight: '800', color: '#94a3b8' },
   inp: {
     borderWidth: 1.5, borderColor: '#e2e8f0', borderRadius: 14,
     padding: 14, fontSize: 15, color: '#1e293b',
