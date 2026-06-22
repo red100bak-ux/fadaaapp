@@ -41,6 +41,7 @@ export interface StockItem {
   soldAt?: string;
   soldBy?: string;
   linkedBarcodes?: LinkedBarcode[];
+  createdAt?: number;
 }
 
 export interface CreditLog {

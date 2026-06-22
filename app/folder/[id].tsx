@@ -124,7 +124,7 @@ export default function FolderDetailScreen() {
   const perm = usePermissions();
 
   const allItems = useMemo(
-    () => getItemsForFolder(app.stock, folder?.name ?? ''),
+    () => getItemsForFolder(app.stock, folder?.name ?? '').sort(([, a], [, b]) => (b.createdAt ?? 0) - (a.createdAt ?? 0)),
     [app.stock, folder?.name],
   );
 
@@ -379,6 +379,7 @@ export default function FolderDetailScreen() {
       linkedBarcodes: !isEdit && pendingLinked.length > 1 ? pendingLinked.slice(1) : (isEdit ? originalItem?.linkedBarcodes : undefined),
       editedBy: isEdit ? auth?.name : undefined,
       img: imgUrl,
+      createdAt: isEdit ? (originalItem?.createdAt ?? Date.now()) : Date.now(),
     };
 
     updateApp((prev) => {
