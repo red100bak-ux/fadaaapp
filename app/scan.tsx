@@ -762,8 +762,19 @@ export default function ScanScreen() {
               ) : null}
               <View style={infoRow}>
                 <Text style={[infoVal, { color: Colors.textMuted, fontSize: 12 }]}>{found.bc}</Text>
-                <Text style={infoLbl}>🔖 الباركود</Text>
+                <Text style={infoLbl}>🔖 باركود رئيسي — qty: {found.item.qty}</Text>
               </View>
+              {(found.item.linkedBarcodes ?? []).length > 0 && (
+                <View style={{ gap: 4 }}>
+                  <Text style={[infoLbl, { textAlign: 'right', marginBottom: 4 }]}>🔗 باركودات مرتبطة:</Text>
+                  {(found.item.linkedBarcodes ?? []).map((lb, i) => (
+                    <View key={i} style={[infoRow, { backgroundColor: '#f8fafc', borderRadius: 8, padding: 8 }]}>
+                      <Text style={{ fontSize: 13, fontWeight: '900', color: lb.qty > 0 ? '#16a34a' : '#ef4444' }}>{lb.qty} قطعة</Text>
+                      <Text style={[infoVal, { color: Colors.textMuted, fontSize: 12 }]}>{lb.bc}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
             </View>
           </View>
           <TouchableOpacity
