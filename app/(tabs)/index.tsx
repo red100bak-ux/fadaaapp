@@ -502,6 +502,13 @@ export default function StockScreen() {
               )}
 
             </ScrollView>
+            {/* زر تحديد الكل كمقروء */}
+            <TouchableOpacity
+              style={{ marginTop: 8, padding: 14, borderRadius: 14, backgroundColor: '#f1f5f9', alignItems: 'center' }}
+              onPress={() => { markAllRead(); setBellModal(false); }}
+            >
+              <Text style={{ fontWeight: '800', color: '#5c67f2', fontSize: 14 }}>✅ إغلاق وتحديد الكل كمقروء</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>

@@ -1166,6 +1166,22 @@ export default function AdminScreen() {
                       );
                     })}
                   </>
+                  {/* زر تحديد كل التنبيهات كمقروءة */}
+                  {(notifications.length > 0 || adminLog.length > 0) && (
+                    <TouchableOpacity
+                      style={{ margin: 8, padding: 12, borderRadius: 14, backgroundColor: '#f1f5f9', alignItems: 'center' }}
+                      onPress={() => {
+                        const allIds = [...notifications.map(n => n.id), ...adminLog.map(l => l.id)];
+                        setReadAlerts(prev => {
+                          const next = [...new Set([...prev, ...allIds])];
+                          AsyncStorage.setItem('fadaa_read_alerts', JSON.stringify(next)).catch(() => {});
+                          return next;
+                        });
+                      }}
+                    >
+                      <Text style={{ fontWeight: '800', color: '#5c67f2', fontSize: 14 }}>✅ تحديد الكل كمقروء</Text>
+                    </TouchableOpacity>
+                  )}
                 );
               })() : (
                 /* ── إشعارات العمليات التجارية فقط ── */
