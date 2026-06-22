@@ -189,10 +189,10 @@ export default function StockScreen() {
     if (!returnConfirm) return;
     const { bc, item } = returnConfirm;
     const soldCount = (app.todaySales ?? []).filter(
-      (s: any) => s.name === item.name && !s.name.startsWith('📦') && !s.name.startsWith('🗑️')
+      (s: any) => s.name === item.name && (s.sell || 0) > 0
     ).length;
     const returnCount = (app.todaySales ?? []).filter(
-      (s: any) => s.name === item.name && (s.sell < 0)
+      (s: any) => s.name === item.name && (s.sell || 0) < 0
     ).length;
     if (soldCount === 0 || returnCount >= soldCount) {
       Alert.alert('⛔ ممنوع', 'ما يمكنكش ترجع أكثر من اللي بعتي');
