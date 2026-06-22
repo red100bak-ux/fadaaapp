@@ -76,7 +76,7 @@ export default function StockScreen() {
 
   const isAdmin = auth?.role === 'admin' || auth?.role === 'super_admin';
   const isMosaed = auth?.role === 'staff';
-  const isPransibal = auth?.role === 'super_admin';
+  const isPransibal = !!(auth?.phone && app.users[auth.phone]?.isSuperAdmin);
   const displayLog = isMosaed ? mosaedLog : activityLog;
   const displayBadge = isMosaed ? mosaedUnread : pransibalUnread;
   const folders = (app.folders ?? []).filter((f) => f.active);
@@ -376,6 +376,11 @@ export default function StockScreen() {
               ))}
             </View>
             <View style={styles.sheetFooter}>
+              {isPransibal && (
+                <TouchableOpacity style={[styles.delBtn]} onPress={() => editingFolder && deleteFolder(editingFolder)}>
+                  <Text style={styles.delBtnTxt}>🗑️ حذف</Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity style={styles.cancelBtn} onPress={() => setEditFolderModal(false)}>
                 <Text style={styles.cancelTxt}>إلغاء</Text>
               </TouchableOpacity>
