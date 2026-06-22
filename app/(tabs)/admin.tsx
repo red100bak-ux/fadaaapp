@@ -1207,7 +1207,7 @@ export default function AdminScreen() {
                             )}
                             {!!entry.by?.trim() && (
                               <View style={[styles.bellUserBadge, { backgroundColor: userColor }]}>
-                                <Text style={[styles.bellUserTxt, { color: '#fff' }]}>👤 {entry.by}</Text>
+                                <Text style={[styles.bellUserTxt, { color: contrastText(userColor) }]}>👤 {entry.by}</Text>
                               </View>
                             )}
                           </View>
