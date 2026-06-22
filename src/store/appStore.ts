@@ -212,19 +212,29 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const curMk = currentMonthKey();
     const prevMonths = get()._months;
 
+    // تطبيع monthKeys القديمة قبل الحفظ
+    const normalizeSales = (todaySales ?? []).map(s => ({
+      ...s,
+      monthKey: normalizeMonthKey(s.monthKey ?? curMk),
+    }));
+    const normalizeLog = (activityLog ?? []).map(l => ({
+      ...l,
+      monthKey: normalizeMonthKey((l as any).monthKey ?? monthKeyFromTs(l.ts)),
+    }));
+
     // Recompute all currently-loaded months from the new data
     const allMonthKeys = new Set([
-      ...Object.keys(prevMonths),
-      ...(todaySales ?? []).map(s => s.monthKey ?? curMk),
+      ...Object.keys(prevMonths).map(normalizeMonthKey),
+      ...normalizeSales.map(s => s.monthKey),
       curMk,
     ]);
 
     const newMonths: Record<string, MonthlyDoc> = {};
     for (const mk of allMonthKeys) {
       newMonths[mk] = {
-        sales:   (todaySales   ?? []).filter(s => (s.monthKey ?? curMk) === mk),
+        sales:   normalizeSales.filter(s => s.monthKey === mk),
         archive: (archiveSales ?? []).filter(a => monthKeyFromDate(a.soldAt) === mk),
-        log:     (activityLog  ?? []).filter(l => monthKeyFromTs(l.ts) === mk),
+        log:     normalizeLog.filter(l => (l as any).monthKey === mk),
       };
     }
 
