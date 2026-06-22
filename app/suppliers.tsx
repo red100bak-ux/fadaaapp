@@ -129,8 +129,8 @@ export default function SuppliersScreen() {
     const fmtD = (d: Date) => `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()}`;
     const chk = {
       id: `chk_${Date.now()}`, amount: val,
-      issueDate: fmtD(checkIssueDateObj), dueDate: checkDueDateObj.toISOString(),
-      name: checkName.trim(), num: checkNum.trim(),
+      issueDate: fmtD(checkIssueDateObj), due: fmtD(checkDueDateObj),
+      name: checkName.trim(), number: checkNum.trim(),
       type: checkType, note: checkNote.trim(), cashed: false, date: fmtD(checkIssueDateObj),
     };
     updateApp(prev => {
@@ -356,8 +356,8 @@ export default function SuppliersScreen() {
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={s.chkAmt}>{formatMAD(chk.amount)}</Text>
-                  {chk.num ? <Text style={s.chkDate}>رقم: {chk.num}</Text> : null}
-                  {chk.dueDate ? <Text style={s.chkDate}>صرف: {chk.dueDate}</Text> : null}
+                  {(chk.number || (chk as any).num) ? <Text style={s.chkDate}>رقم: {chk.number || (chk as any).num}</Text> : null}
+                  {(chk.due || (chk as any).dueDate) ? <Text style={s.chkDate}>صرف: {chk.due || (chk as any).dueDate}</Text> : null}
                   {chk.name ? <Text style={s.txNote}>{chk.name}</Text> : null}
                 </View>
               </View>

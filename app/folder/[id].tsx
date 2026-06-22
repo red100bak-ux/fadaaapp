@@ -270,7 +270,7 @@ export default function FolderDetailScreen() {
     const existingInList = pendingLinked.find(l => l.bc === data);
     if (existingInList) {
       setPendingLinked(p => p.map(l => l.bc === data ? { ...l, qty: l.qty + 1 } : l));
-      setAppAlert({ icon: '✅', title: `+1 — ${data}`, message: `الكمية: ${existingInList.qty + 1}`, buttons: [{ label: 'حسناً', onPress: () => setAppAlert(null), primary: true }] });
+      setAppAlert({ icon: '✅', title: `+1 — ${data}`, message: `الكمية: ${existingInList.qty + 1}`, buttons: [{ label: 'حسناً', onPress: () => { bcScannedRef.current = false; setAppAlert(null); }, primary: true }] });
       return;
     }
 
