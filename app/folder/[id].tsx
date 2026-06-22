@@ -647,7 +647,7 @@ export default function FolderDetailScreen() {
       {/* زر إضافة منتج — Admin فقط */}
       {(perm.canAddProduct || isClickFolder) && (
         <TouchableOpacity
-          style={{ position: 'absolute', bottom: 90, left: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: isClickFolder ? '#10b981' : '#5c67f2', alignItems: 'center', justifyContent: 'center', elevation: 20, zIndex: 999, shadowColor: '#5c67f2', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }}
+          style={{ position: 'absolute', bottom: 120, left: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: isClickFolder ? '#10b981' : '#5c67f2', alignItems: 'center', justifyContent: 'center', elevation: 20, zIndex: 999, shadowColor: '#5c67f2', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }}
           onPress={openAdd}
           activeOpacity={0.85}
         >
