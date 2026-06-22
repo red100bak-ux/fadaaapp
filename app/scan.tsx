@@ -159,6 +159,7 @@ export default function ScanScreen() {
 
   const [scanned, setScanned] = useState(false);
   const [found, setFound] = useState<{ bc: string; item: StockItem } | null>(null);
+  const [scannedLinkedBc, setScannedLinkedBc] = useState<string | null>(null);
   const [returnConfirm, setReturnConfirm] = useState<{ bc: string; item: StockItem } | null>(null);
   const [returnReasonModal, setReturnReasonModal] = useState(false);
   const [sellModal, setSellModal] = useState(false);
@@ -265,7 +266,7 @@ export default function ScanScreen() {
 
     if (scanMode === 'info') {
       if (item) {
-        setFound({ bc: mainBc, item });
+        setFound({ bc: mainBc, item }); setScannedLinkedBc(bc !== mainBc ? bc : null);
       } else {
         showAlert('🔍', 'ما لقاتاش', 'هاد السلعة ما كاينة في الستوك', [
           { label: 'إلغاء', onPress: () => { setAlertModal(null); router.back(); } },
@@ -290,7 +291,7 @@ export default function ScanScreen() {
           logActivity('add_stock', `📦 زاد: ${item.name} كود ${bc} (+1 — باقي: ${newQty})`, auth?.name ?? '');
           showAlert('✅', `+1 — ${item.name}`, `الكود ${bc}: ${newQty} قطعة`, [
             { label: 'عاود سكان', onPress: () => { setAlertModal(null); setScanned(false); }, primary: true },
-            { label: 'تعديل', onPress: () => { setAlertModal(null); setFound({ bc: mainBc, item }); } },
+            { label: 'تعديل', onPress: () => { setAlertModal(null); setFound({ bc: mainBc, item }); setScannedLinkedBc(bc !== mainBc ? bc : null); } },
           ]);
         } else {
           // باركود رئيسي — +1 عادي
@@ -332,13 +333,13 @@ export default function ScanScreen() {
         ]);
         return;
       }
-      setFound({ bc: mainBc, item });
+      setFound({ bc: mainBc, item }); setScannedLinkedBc(bc !== mainBc ? bc : null);
       setReturnConfirm({ bc: mainBc, item });
       return;
     }
 
     if (item) {
-      setFound({ bc: mainBc, item });
+      setFound({ bc: mainBc, item }); setScannedLinkedBc(bc !== mainBc ? bc : null);
       if (scanMode === 'sell') {
         if (item.soldAt) {
           showAlert('📵', 'مباع', `${item.name}\nبيع بتاريخ: ${item.soldAt}${item.soldBy ? `\nمن طرف: ${item.soldBy}` : ''}`, [
@@ -367,6 +368,28 @@ export default function ScanScreen() {
   function sellOne() {
     if (!found) return;
     const { bc, item } = found;
+
+    // إلا الكود مرتبط → ننقص qty ديالو خصيصاً
+    if (scannedLinkedBc) {
+      const linkedEntry = (item.linkedBarcodes ?? []).find(l => l.bc === scannedLinkedBc);
+      if (!linkedEntry || linkedEntry.qty <= 0) {
+        showAlert('🛑', 'STOP', 'المخزون فارغ لهاد الكود', [{ label: 'حسناً', onPress: () => setAlertModal(null), primary: true }]);
+        return;
+      }
+      const newLinked = (item.linkedBarcodes ?? []).map(l =>
+        l.bc === scannedLinkedBc ? { ...l, qty: l.qty - 1 } : l
+      ).filter(l => l.qty > 0);
+      updateApp((prev) => ({
+        ...prev,
+        stock: { ...prev.stock, [bc]: { ...item, linkedBarcodes: newLinked } },
+        todaySales: [...prev.todaySales, makeSaleRecord({ name: item.name, sell: item.sell, buy: item.buy, cat: item.cat, seller: auth?.name ?? '' })],
+      }));
+      logActivity('sell', `🛒 باع: ${item.name} — ${formatMAD(item.sell)}`, auth?.name ?? '', item.sell);
+      setSellModal(false);
+      setSellSuccess({ name: item.name, sell: item.sell, profit: item.sell - item.buy, seller: auth?.name ?? '' });
+      return;
+    }
+
     if (item.qty <= 0) {
       showAlert('🛑', 'STOP', 'المخزون فارغ! ما يمكنكش تبيع كتر ملي في الستوك', [
         { label: 'حسناً', onPress: () => setAlertModal(null), primary: true },
@@ -586,6 +609,29 @@ export default function ScanScreen() {
   function confirmReturn(reason: string) {
     if (!returnConfirm) return;
     const { bc, item } = returnConfirm;
+
+    // إلا الكود مرتبط → نرجع qty ديالو
+    if (scannedLinkedBc) {
+      const newLinked = (item.linkedBarcodes ?? []).map(l =>
+        l.bc === scannedLinkedBc ? { ...l, qty: l.qty + 1 } : l
+      );
+      // إلا ما كانش موجود نضيفو
+      if (!newLinked.find(l => l.bc === scannedLinkedBc)) {
+        newLinked.push({ bc: scannedLinkedBc, qty: 1 });
+      }
+      const record = makeSaleRecord({ name: item.name, sell: -(item.sell), buy: -(item.buy), cat: item.cat, seller: auth?.name ?? '', returnReason: reason });
+      updateApp((prev) => ({
+        ...prev,
+        stock: { ...prev.stock, [bc]: { ...item, linkedBarcodes: newLinked } },
+        todaySales: [...prev.todaySales, record],
+      }));
+      logActivity('return', `↩️ رجع: ${item.name} — ${reason}`, auth?.name ?? '', item.sell);
+      setReturnReasonModal(false);
+      setReturnConfirm(null);
+      router.back();
+      return;
+    }
+
     updateApp((prev) => {
       const newQty = item.qty + 1;
       const newStock = { ...prev.stock, [bc]: { ...item, qty: newQty } };
